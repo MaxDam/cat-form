@@ -289,6 +289,7 @@ class CForm:
     # Start conversation
     def start_conversation(self):
         self.state = CFormState.ASK_INFORMATIONS
+        return self.execute_dialogue()
 
     # Stop conversation
     def stop_conversation(self):

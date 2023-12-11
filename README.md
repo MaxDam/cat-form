@@ -23,10 +23,10 @@ def cform_set_model(model, cat):
 </code>
 </pre>
 
-<pre>
-<code>	
 This hook allows you to manipulate the 
 prompt to request missing information
+<pre>
+<code>	
 @hook
 def cform_ask_missing_information(prompt, cat):
 	#...
@@ -34,10 +34,10 @@ def cform_ask_missing_information(prompt, cat):
 </code>
 </pre>
 	
-<pre>
-<code>
 This hook allows you to manipulate 
 the prompt to ask for user confirmation
+<pre>
+<code>
 @hook
 def cform_show_summary(prompt, cat):
 	#...
@@ -45,10 +45,10 @@ def cform_show_summary(prompt, cat):
 </code>
 </pre>
 
-<pre>
-<code>
 This Hook is called when the form is filled out 
 and user confirmation is obtained
+<pre>
+<code>
 @hook
 def cform_execute_action(model, cat):
 	return result

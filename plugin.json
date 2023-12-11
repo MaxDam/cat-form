@@ -1,10 +1,10 @@
 {
     "name": "Cat Conversational Form",
     "version": "0.0.1",
-    "description": "Description of cat_conversational_form.",
-    "author_name": "Me",
-    "author_url": "https://mywebsite.me",
-    "plugin_url": "https://github.com/my_name/cat_conversational_form",
-    "tags": "cat, template, example",
-    "thumb": "https://raw.githubusercontent.com/my_repo_path/cat_conversational_form.png"
+    "description": "The cat knows how to collect the data you need in a conversational way!",
+    "author_name": "Massimiliano D'Amico",
+    "author_url": "https://www.linkedin.com/in/massimilianodamico",
+    "plugin_url": "https://github.com/MaxDam/cat-conversational-form",
+    "tags": "cat, form, conversational, action",
+    "thumb": "https://maxdam.github.io/cat-conversational-form/img/thumb.jpg"
 }

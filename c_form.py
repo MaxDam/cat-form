@@ -2,20 +2,25 @@ import json
 from cat.log import log
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from kor import create_extraction_chain, from_pydantic, Object, Text
 from enum import Enum
 
+# Conversational Form State
 class CFormState(Enum):
-    ASK_INFORMATIONS    = 0
-    ASK_SUMMARY         = 1
-    EXECUTE_ACTION      = 2
+    STOPPED             = 0     
+    ASK_INFORMATIONS    = 1
+    ASK_SUMMARY         = 2
+    EXECUTE_ACTION      = 3
 
-class ConversationalForm:
 
-    def __init__(self, model, cat):
+# Class Conversational Form
+class CForm:
+
+    def __init__(self, model, cat, key):
         self.model = model
         self.cat = cat
+        self.key = key
         self.state = CFormState.ASK_INFORMATIONS
 
 
@@ -61,6 +66,12 @@ class ConversationalForm:
         - Human: {user_message}
         - AI: """
 
+        # Hook
+        try:
+            prompt = self.cat.mad_hatter.execute_hook("cform_ask_missing_information", prompt, cat=self.cat)
+        except Exception as e:
+            log.debug(f"{e}")
+
         log.warning(f'MISSING INFORMATIONS: {ask_for}')
         response = self.cat.llm(prompt)
 
@@ -82,6 +93,12 @@ class ConversationalForm:
         ## Conversation until now:{chat_history}
         - Human: {user_message}
         - AI: """
+
+        # Hook
+        try:
+            prompt = self.cat.mad_hatter.execute_hook("cform_show_summary", prompt, cat=self.cat)
+        except Exception as e:
+            log.debug(f"{e}")
 
         # Change status
         self.state = CFormState.ASK_SUMMARY
@@ -199,20 +216,94 @@ class ConversationalForm:
 
     # return pydantic prompt based from examples
     def _get_pydantic_prompt(self, message):
-        prompt_examples = type(self.model).get_prompt_examples()
         lines = []
-        for example in prompt_examples:
-            lines.append(f"Sentence: {example['sentence']}")
-            lines.append(f"JSON: {self._format_prompt_json(example['json'])}")
-            lines.append(f"Updated JSON: {self._format_prompt_json(example['updatedJson'])}")
-            lines.append("\n")
+        model_class = type(self.model)
+
+        # If exists class method for examples ..
+        if hasattr(model_class, 'get_prompt_examples'):
+            prompt_examples = type(self.model).get_prompt_examples()
+            for example in prompt_examples:
+                lines.append(f"Sentence: {example['sentence']}")
+                lines.append(f"JSON: {self._format_prompt_json(example['json'])}")
+                lines.append(f"Updated JSON: {self._format_prompt_json(example['updatedJson'])}")
+                lines.append("\n")
+
         result = "Update the following JSON with information extracted from the Sentence:\n\n"
         result += "\n".join(lines)
         result += f"Sentence: {message}\nJSON:{json.dumps(self.model.dict(), indent=4)}\nUpdated JSON:"
         return result
 
-    #format json for prompt
+    # format json for prompt
     def _format_prompt_json(self, values):
         attributes = list(self.model.__annotations__.keys())
         data_dict = dict(zip(attributes, values))
         return json.dumps(data_dict, indent=4)
+
+
+
+
+   
+   
+   # Start conversation
+    def start_conversation(self):
+        self.state = CFormState.ASK_INFORMATIONS
+
+    # Stop conversation
+    def stop_conversation(self):
+        self.state = CFormState.STOPPED
+        
+
+    # Execute the dialogue
+    def execute_dialogue(self):
+        try:
+            # update form from user response
+            model_is_updated = self.update_from_user_response()
+            
+            # if the form was updated, save it in working memory
+            if model_is_updated:
+                self.cat.working_memory[ self.key] = self
+
+        except ValidationError as e:
+            # If there was a validation problem, return the error message
+            message = e.errors()[0]["msg"]
+            response = self.cat.llm(message)
+            return response
+
+        log.warning(f"state:{self.state}, is completed:{self.is_completed()}")
+
+        # Checks whether it should execute the action
+        if self.state == CFormState.ASK_SUMMARY:
+            if self.check_confirm():
+                
+                # Hook
+                try:
+                    response = self.cat.mad_hatter.execute_hook("cform_execute_action", self, cat=self.cat)
+                except Exception as e:
+                    log.debug(f"{e}")
+                    response = self.execute_action()
+
+                del self.cat.working_memory[self.key]
+                return response
+        
+        # Checks whether the form is completed
+        if self.state == CFormState.ASK_INFORMATIONS and self.is_completed():
+            response = self.show_summary(self.cat)
+            return response
+
+        # If the form is not completed, ask for missing information
+        response = self.ask_missing_information()
+        return response
+    
+    # Execute action
+    def execute_action(self):
+        pass
+
+    # Check if the dialog is active
+    def is_active(self):
+        is_active = True
+        if self.state == CFormState.STOPPED:
+            is_active = False
+        return is_active
+
+
+#TODO: handle stop conversation, not delete key in working memory but use only state, and found a mode to interaction

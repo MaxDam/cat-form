@@ -7,15 +7,12 @@ from typing import Dict, Optional
 from .cform import CForm, CFormState
 import random
 
-# TODO
+# TODO settings
 class MySettings(BaseModel):
-    required_int: int
-    optional_int: int = 69
-    required_str: str
-    optional_str: str = "meow"
-    required_date: date
-    optional_date: date = 1679616000
-
+    ask_confirm: bool = Field(
+        title="ask confirm",
+        default=True
+    )
 @plugin
 def settings_schema():   
     return MySettings.schema()

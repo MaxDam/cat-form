@@ -70,7 +70,7 @@ class CForm:
         try:
             prompt = self.cat.mad_hatter.execute_hook("cform_ask_missing_information", prompt, cat=self.cat)
         except Exception as e:
-            log.debug(f"{e}")
+            pass
 
         log.warning(f'MISSING INFORMATIONS: {ask_for}')
         response = self.cat.llm(prompt)
@@ -98,7 +98,7 @@ class CForm:
         try:
             prompt = self.cat.mad_hatter.execute_hook("cform_show_summary", prompt, cat=self.cat)
         except Exception as e:
-            log.debug(f"{e}")
+            pass
 
         # Change status
         self.state = CFormState.ASK_SUMMARY
@@ -161,7 +161,7 @@ class CForm:
         return True
 
 
-    #### PYDANTIC & KOR IMPLEMENTATIONS ####
+    #### MESSAGE to JSON - PYDANTIC & KOR IMPLEMENTATIONS ####
 
     # Extracted new informations from the user's response (by pydantic)
     def _extract_info_by_pydantic(self):
@@ -202,7 +202,7 @@ class CForm:
             return None
 
 
-    #### FROM SCRATCH IMPLEMENTATION ####
+    #### MESSAGE to JSON - FROM SCRATCH IMPLEMENTATION ####
 
     # Extracted new informations from the user's response (from sratch)
     def _extract_info_from_scratch(self):
@@ -240,20 +240,9 @@ class CForm:
         return json.dumps(data_dict, indent=4)
 
 
-
-
+    ## DIALOGUE METHODS ##
    
-   
-   # Start conversation
-    def start_conversation(self):
-        self.state = CFormState.ASK_INFORMATIONS
-
-    # Stop conversation
-    def stop_conversation(self):
-        self.state = CFormState.STOPPED
-        
-
-    # Execute the dialogue
+   # Execute the dialogue
     def execute_dialogue(self):
         try:
             # update form from user response
@@ -277,9 +266,8 @@ class CForm:
                 
                 # Hook
                 try:
-                    response = self.cat.mad_hatter.execute_hook("cform_execute_action", self, cat=self.cat)
+                    response = self.cat.mad_hatter.execute_hook("cform_execute_action", self.model, cat=self.cat)
                 except Exception as e:
-                    log.debug(f"{e}")
                     response = self.execute_action()
 
                 del self.cat.working_memory[self.key]
@@ -298,12 +286,20 @@ class CForm:
     def execute_action(self):
         pass
 
+    # Start conversation
+    def start_conversation(self):
+        self.state = CFormState.ASK_INFORMATIONS
+
+    # Stop conversation
+    def stop_conversation(self):
+        self.state = CFormState.STOPPED
+        
+        # Delete form from working memory
+        del self.cat.working_memory[self.key]
+
     # Check if the dialog is active
     def is_active(self):
         is_active = True
         if self.state == CFormState.STOPPED:
             is_active = False
         return is_active
-
-
-#TODO: handle stop conversation, not delete key in working memory but use only state, and found a mode to interaction

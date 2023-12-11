@@ -5,7 +5,6 @@ from typing import Dict
 
 # Model
 class PizzaOrder(BaseModel):
-
     pizza_type: str | None = None
     address: str | None = None
     phone: str | None = None
@@ -40,25 +39,12 @@ def cform_show_summary(prompt, cat):
 def cform_ask_missing_information(prompt, cat):
     return prompt
 
-# Hook for execute final action
-@hook
-def cform_execute_action(cform, cat):
-    result = "<h3>ORDER COMPLETED<h3><br>" 
-    result += "<p>"
-    result += f"Pizza type: {cform.model.pizza_type}<br>"
-    result += f"Address: {cform.model.address}<br>"
-    result += f"Phone number: {cform.model.phone}"
-    result += "</p>"
-    return result
-
-
 # Order pizza start intent
 @tool(return_direct=True)
-def start_order_pizza_intent(details, cat):
+def start_order_pizza_intent(input, cat):
     '''I would like to order a pizza
     I'll take a pizza'''
 
-    log.critical("INTENT ORDER PIZZA START")
     if "PizzaOrder" in cat.working_memory.keys():
         cform = cat.working_memory["PizzaOrder"]
         cform.start_conversation()
@@ -73,20 +59,18 @@ def stop_order_pizza_intent(input, cat):
     I want to give up on the order, 
     go back to normal conversation'''
 
-    log.critical("INTENT ORDER PIZZA STOP")     
     if "PizzaOrder" in cat.working_memory.keys():
         cform = cat.working_memory["PizzaOrder"]
         cform.stop_conversation()    
     return
 
-# Hook user interactions
+# Hook for execute final action
 @hook
-def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-
-    if "PizzaOrder" in cat.working_memory.keys():
-        cform = cat.working_memory["PizzaOrder"]
-        if cform.isActive():
-            response = cform.execute_dialogue()
-            return { "output": response }
-            
-    return fast_reply
+def cform_execute_action(model, cat):
+    result = "<h3>ORDER COMPLETED<h3><br>" 
+    result += "<p>"
+    result += f"Pizza type: {model.pizza_type}<br>"
+    result += f"Address: {model.address}<br>"
+    result += f"Phone number: {model.phone}"
+    result += "</p>"
+    return result

@@ -27,10 +27,16 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
         model = cat.mad_hatter.execute_hook("cform_set_model", None, cat=cat)
         key = model.__class__.__name__
         if key not in cat.working_memory.keys():
+            # If the key is not present -> initialize CForm and save it in working memory
             cform = CForm(model=model, cat=cat, key=key)
-            cat.working_memory[cform.key] = cform
-            #TODO: check if the model is changed, and in this case delete previous key and create a new CForm
+            cat.working_memory[key] = cform
+        else:
+            # If the key is present and form is active -> execute dialog exchange
+            cform = cat.working_memory[key]
+            if cform.is_active():
+                response = cform.execute_dialogue()
+                return { "output": response }
     except Exception as e:
-        log.debug(f"{e}")
-        
+        pass
+
     return fast_reply

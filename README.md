@@ -1,9 +1,9 @@
+
 # Cat Conversational Form
 
 the cat knows how to collect the data you need in a conversational way!
 
 You can see an example implementation here:
-
 https://github.com/MaxDam/cat-form-order-pizza
 
 
@@ -14,43 +14,57 @@ https://github.com/MaxDam/cat-form-order-pizza
 
 ## Usage
 
+<pre><code>
+'''
+Prepare the form
+'''
+class MyModel(BaseModel):
+    field1: str | None = None
+    field2: str | None = None
+    
+    @classmethod
+    def get_prompt_examples(cls):
+        return [ <json examples> ]
+</code></pre>
+
+<pre><code>
+'''
 This hook is used to set the module instance
-<pre>
-<code>
+'''
 @hook
 def cform_set_model(model, cat):
-    return <instance of module>
-</code>
-</pre>
+    return MyModel()
+</code></pre>
 
+<pre><code>
+'''
 This hook allows you to manipulate the 
 prompt to request missing information
-<pre>
-<code>	
+'''
 @hook
 def cform_ask_missing_information(prompt, cat):
-	#...
+	# ......
     return prompt
-</code>
-</pre>
+</code></pre>
 	
+<pre><code>
+'''
 This hook allows you to manipulate 
 the prompt to ask for user confirmation
-<pre>
-<code>
+'''
 @hook
 def cform_show_summary(prompt, cat):
-	#...
+	# ......
     return prompt
-</code>
-</pre>
+</code></pre>
 
+<pre><code>
+'''
 This Hook is called when the form is filled out 
 and user confirmation is obtained
-<pre>
-<code>
+'''
 @hook
 def cform_execute_action(model, cat):
+    # ......
 	return result
-</code>
-</pre>
+</code></pre>

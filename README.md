@@ -1,29 +1,42 @@
 # Cat Conversational Form
 the cat knows how to collect the data you need in a conversational way!
+You can see an example implementation here:
+https://github.com/MaxDam/cat-form-order-pizza
+
 
 <img src="./img/thumb.jpg" width=400>
 
 [![awesome plugin](https://custom-icon-badges.demolab.com/static/v1?label=&message=awesome+plugin&color=383938&style=for-the-badge&logo=cheshire_cat_ai)](https://)  
-[![Awesome plugin](https://custom-icon-badges.demolab.com/static/v1?label=&message=Awesome+plugin&color=000000&style=for-the-badge&logo=cheshire_cat_ai)](https://)  
-[![awesome plugin](https://custom-icon-badges.demolab.com/static/v1?label=&message=awesome+plugin&color=F4F4F5&style=for-the-badge&logo=cheshire_cat_black)](https://)
 
-Write here all the useful information about your plugin.
-
-This repository is the template to automate the release of official Cheshire Cat AI plugins. 
 
 ## Usage
 
-1. Create a new repository clicking on the `Use this template` button.
-2. Clone your new repo directly in the Cat's `plugins` folder.
-3. Run the `setup.py` script:
-```bash
-python setup.py
-```
-The script will prompt you to write the name of your plugin and make an initial setup setting the name in the files.
+This hook is used to set the module instance
+> @hook
+> def cform_set_model(model, cat):
+>     return <instance of module>
 
-4. Start developing!
+	
+This hook allows you to manipulate the 
+prompt to request missing information
+> @hook
+> def cform_ask_missing_information(prompt, cat):
+> 	#...
+>     return prompt
 
-> **Important**
-> A new release of your plugin is triggered every time you set a new `version` in the `plugin.json` file.
-> Please, remember to set it correctly every time to want to release an update.
+	
+This hook allows you to manipulate 
+the prompt to ask for user confirmation
+> @hook
+> def cform_show_summary(prompt, cat):
+> 	#...
+>     return prompt
+
+
+
+This Hook is called when the form is filled out 
+and user confirmation is obtained
+> @hook
+> def cform_execute_action(model, cat):
+> 	return result
 

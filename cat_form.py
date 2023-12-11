@@ -4,7 +4,7 @@ from datetime import datetime, date
 from cat.log import log
 import enum
 from typing import Dict, Optional
-from .c_form import CForm, CFormState
+from .cform import CForm, CFormState
 import random
 
 # TODO

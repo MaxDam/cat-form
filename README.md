@@ -4,7 +4,7 @@
 the cat knows how to collect the data you need in a conversational way!
 
 You can see an example implementation here:
-https://github.com/MaxDam/cat-form-order-pizza
+https://github.com/MaxDam/cat-form-usages
 
 
 <img src="./img/thumb.jpg" width=400>
@@ -16,7 +16,7 @@ https://github.com/MaxDam/cat-form-order-pizza
 
 <pre><code>
 '''
-Prepare the form
+Prepare the form with field and special class methods
 '''
 class MyModel(BaseModel):
     field1: str | None = None
@@ -25,6 +25,16 @@ class MyModel(BaseModel):
     @classmethod
     def get_prompt_examples(cls):
         return [ <json examples> ]
+		
+	@classmethod
+    def prompt_prefix(cls):
+        return "<prompt>
+		
+	@classmethod
+    def execute_action(cls, model):
+		# execute action
+		return "<action output>"
+		
 </code></pre>
 
 <pre><code>
@@ -32,39 +42,33 @@ class MyModel(BaseModel):
 This hook is used to set the module instance
 '''
 @hook
-def cform_set_model(model, cat):
-    return MyModel()
+def cform_set_model(models, cat):
+    return models.append(MyModel())
 </code></pre>
 
 <pre><code>
 '''
-This hook allows you to manipulate the 
-prompt to request missing information
+Intent start
 '''
-@hook
-def cform_ask_missing_information(prompt, cat):
-	# ......
-    return prompt
-</code></pre>
-	
-<pre><code>
-'''
-This hook allows you to manipulate 
-the prompt to ask for user confirmation
-'''
-@hook
-def cform_show_summary(prompt, cat):
-	# ......
-    return prompt
+@tool(return_direct=True)
+def intent_start(model, cat):
+	''' <docString> '''
+
+    if "MyModel" in cat.working_memory.keys():
+        cform = cat.working_memory["MyModel"]
+        return cform.start_conversation()
 </code></pre>
 
 <pre><code>
 '''
-This Hook is called when the form is filled out 
-and user confirmation is obtained
+Intent stop
 '''
-@hook
-def cform_execute_action(model, cat):
-    # ......
-	return result
+@tool(return_direct=True)
+def intent_stop(model, cat):
+	''' <docString> '''
+
+    if "MyModel" in cat.working_memory.keys():
+        cform = cat.working_memory["MyModel"]
+        cform.stop_conversation()    
+    return
 </code></pre>

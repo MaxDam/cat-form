@@ -4,6 +4,7 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from kor import create_extraction_chain, from_pydantic, Object, Text
+from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
 from enum import Enum
 
 # Conversational Form State
@@ -18,19 +19,37 @@ class CFormState(Enum):
 class CForm:
 
     def __init__(self, model, cat, key):
+        self.state = CFormState.STOPPED
         self.model = model
         self.cat = cat
         self.key = key
-        self.state = CFormState.ASK_INFORMATIONS
 
+    # Start conversation
+    def start_conversation(self):
+        self.state  = CFormState.ASK_INFORMATIONS
+        self._set_active_form()
+        return self.execute_dialogue()
 
+    # Stop conversation
+    def stop_conversation(self):
+        self.state = CFormState.STOPPED
+        
+        # Delete form from working memory
+        # del self.cat.working_memory[self.key]
+
+    # Check if the dialog is active
+    def is_active(self):
+        is_active = True
+        if self.state == CFormState.STOPPED:
+            is_active = False
+        return is_active
+    
     # Check if the form is completed
     def is_completed(self):
         for k,v in self.model.model_dump().items():
             if v in [None, ""]:
                 return False
         return True
-
 
     # Return list of empty form's fields
     def _check_what_is_empty(self):
@@ -47,7 +66,12 @@ class CForm:
         # Gets the information it should ask the user based on the fields that are still empty
         ask_for = self._check_what_is_empty()
 
+        # Get prompt
         prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", '', cat=self.cat)
+        if hasattr(type(self.model), 'prompt_prefix'):
+            prefix = type(self.model).prompt_prefix()
+
+        # Get user message and chat history
         user_message = self.cat.working_memory["user_message_json"]["text"]
         chat_history = self.cat.agent_manager.agent_prompt_chat_history(
             self.cat.working_memory["history"]
@@ -66,12 +90,6 @@ class CForm:
         - Human: {user_message}
         - AI: """
 
-        # Hook
-        try:
-            prompt = self.cat.mad_hatter.execute_hook("cform_ask_missing_information", prompt, cat=self.cat)
-        except Exception as e:
-            pass
-
         log.warning(f'MISSING INFORMATIONS: {ask_for}')
         response = self.cat.llm(prompt)
 
@@ -79,7 +97,7 @@ class CForm:
 
     # Show summary of the form to the user
     def show_summary(self, cat):
-        prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", '', cat=self.cat)
+        prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
         user_message = self.cat.working_memory["user_message_json"]["text"]
         chat_history = self.cat.agent_manager.agent_prompt_chat_history(
             self.cat.working_memory["history"]
@@ -93,12 +111,6 @@ class CForm:
         ## Conversation until now:{chat_history}
         - Human: {user_message}
         - AI: """
-
-        # Hook
-        try:
-            prompt = self.cat.mad_hatter.execute_hook("cform_show_summary", prompt, cat=self.cat)
-        except Exception as e:
-            pass
 
         # Change status
         self.state = CFormState.ASK_SUMMARY
@@ -217,10 +229,8 @@ class CForm:
     # return pydantic prompt based from examples
     def _get_pydantic_prompt(self, message):
         lines = []
-        model_class = type(self.model)
-
         # If exists class method for examples ..
-        if hasattr(model_class, 'get_prompt_examples'):
+        if hasattr(type(self.model), 'get_prompt_examples'):
             prompt_examples = type(self.model).get_prompt_examples()
             for example in prompt_examples:
                 lines.append(f"Sentence: {example['sentence']}")
@@ -264,11 +274,11 @@ class CForm:
         if self.state == CFormState.ASK_SUMMARY:
             if self.check_confirm():
                 
-                # Hook
-                try:
-                    response = self.cat.mad_hatter.execute_hook("cform_execute_action", self.model, cat=self.cat)
-                except Exception as e:
-                    response = self.execute_action()
+                # Execute action
+                if hasattr(type(self.model), 'execute_action'):
+                    response = type(self.model).execute_action(self.model)
+                else:
+                    return self.model.json()
 
                 del self.cat.working_memory[self.key]
                 return response
@@ -281,26 +291,16 @@ class CForm:
         # If the form is not completed, ask for missing information
         response = self.ask_missing_information()
         return response
-    
-    # Execute action
-    def execute_action(self):
-        pass
+   
 
-    # Start conversation
-    def start_conversation(self):
-        self.state = CFormState.ASK_INFORMATIONS
-        return self.execute_dialogue()
-
-    # Stop conversation
-    def stop_conversation(self):
-        self.state = CFormState.STOPPED
-        
-        # Delete form from working memory
-        del self.cat.working_memory[self.key]
-
-    # Check if the dialog is active
-    def is_active(self):
-        is_active = True
-        if self.state == CFormState.STOPPED:
-            is_active = False
-        return is_active
+    # Check that there is only one active form
+    def _set_active_form(self):
+        if "_active_cforms" not in self.cat.working_memory.keys():
+            self.cat.working_memory["_active_cforms"] = []
+        if self.key not in self.cat.working_memory["_active_cforms"]:
+            self.cat.working_memory["_active_cforms"].append(self.key)
+        for key in self.cat.working_memory["_active_cforms"]:
+            if key != self.key:
+                self.cat.working_memory["_active_cforms"].remove(key)
+                if key in self.cat.working_memory.keys():
+                    self.cat.working_memory[key].state = CFormState.STOPPED

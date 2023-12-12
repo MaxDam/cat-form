@@ -1,11 +1,9 @@
 from cat.mad_hatter.decorators import tool, hook, plugin
-from pydantic import BaseModel, Field, ValidationError, field_validator
-from datetime import datetime, date
+from pydantic import BaseModel, Field
 from cat.log import log
 import enum
-from typing import Dict, Optional
+from typing import Dict
 from .cform import CForm, CFormState
-import random
 
 # TODO settings
 class MySettings(BaseModel):
@@ -13,6 +11,8 @@ class MySettings(BaseModel):
         title="ask confirm",
         default=True
     )
+
+
 @plugin
 def settings_schema():   
     return MySettings.schema()
@@ -21,18 +21,33 @@ def settings_schema():
 @hook(priority=1)
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     try:
-        model = cat.mad_hatter.execute_hook("cform_set_model", None, cat=cat)
-        key = model.__class__.__name__
-        if key not in cat.working_memory.keys():
+        # Acquire models from hook
+        models = []
+        models = cat.mad_hatter.execute_hook("cform_set_model", models, cat=cat)
+        
+        # for each model ..
+        for model in models:
+
+            # Gets the key based on the model class name
+            key = model.__class__.__name__
+
             # If the key is not present -> initialize CForm and save it in working memory
-            cform = CForm(model=model, cat=cat, key=key)
-            cat.working_memory[key] = cform
-        else:
-            # If the key is present and form is active -> execute dialog exchange
-            cform = cat.working_memory[key]
-            if cform.is_active():
-                response = cform.execute_dialogue()
-                return { "output": response }
+            if key not in cat.working_memory.keys():
+                
+                # Create cform and put it into working memory
+                cform = CForm(model=model, cat=cat, key=key)
+                cat.working_memory[key] = cform
+            
+            else: # If the key is present and form is active -> execute dialog exchange
+                
+                # Get cform from working memory
+                cform = cat.working_memory[key]
+                
+                # If form is active -> execute dialog
+                if cform.is_active():
+                    response = cform.execute_dialogue()
+                    return { "output": response }
+                
     except Exception as e:
         pass
 

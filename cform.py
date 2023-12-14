@@ -1,9 +1,6 @@
 import json
 from cat.log import log
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts import PromptTemplate
-from pydantic import BaseModel, Field, ValidationError, field_validator
-from kor import create_extraction_chain, from_pydantic, Object, Text
+from pydantic import ValidationError
 from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
 from enum import Enum
 
@@ -24,11 +21,13 @@ class CForm:
         self.cat = cat
         self.key = key
 
+
     # Start conversation
     def start_conversation(self):
         self.state  = CFormState.ASK_INFORMATIONS
         self._set_active_form()
         return self.execute_dialogue()
+
 
     # Stop conversation
     def stop_conversation(self):
@@ -37,6 +36,7 @@ class CForm:
         # Delete form from working memory
         # del self.cat.working_memory[self.key]
 
+
     # Check if the dialog is active
     def is_active(self):
         is_active = True
@@ -44,20 +44,26 @@ class CForm:
             is_active = False
         return is_active
     
+
     # Check if the form is completed
     def is_completed(self):
         for k,v in self.model.model_dump().items():
             if v in [None, ""]:
                 return False
         return True
+    
 
-    # Return list of empty form's fields
-    def _check_what_is_empty(self):
-        ask_for = []
-        for field, value in self.model.model_dump().items():
-            if value in [None, "", 0]:
-                ask_for.append(f'{field}')
-        return ask_for
+    # Check that there is only one active form
+    def _set_active_form(self):
+        if "_active_cforms" not in self.cat.working_memory.keys():
+            self.cat.working_memory["_active_cforms"] = []
+        if self.key not in self.cat.working_memory["_active_cforms"]:
+            self.cat.working_memory["_active_cforms"].append(self.key)
+        for key in self.cat.working_memory["_active_cforms"]:
+            if key != self.key:
+                self.cat.working_memory["_active_cforms"].remove(key)
+                if key in self.cat.working_memory.keys():
+                    self.cat.working_memory[key].state = CFormState.STOPPED
 
 
     # Queries the llm asking for the missing fields of the form, without memory chain
@@ -77,16 +83,16 @@ class CForm:
             self.cat.working_memory["history"]
         )
         
+        ## Conversation until now:{chat_history}
+        
         # Prompt
         prompt = f"""{prefix}
         Create a question for the user, 
-        below are some things to ask the user in a conversational and confidential way, to complete the pizza order.
+        below are some things to ask the user in a conversational and confidential way.
         You should only ask one question at a time even if you don't get all the information
         don't ask how to list! Don't say hello to the user! Don't say hi.
         Explain that you need some information. If the ask_for list is empty, thank them and ask how you can help them.
-        Don't present the conversation history but just a question.
         ### ask_for list: {ask_for}
-        ## Conversation until now:{chat_history}
         - Human: {user_message}
         - AI: """
 
@@ -94,6 +100,16 @@ class CForm:
         response = self.cat.llm(prompt)
 
         return response 
+
+
+    # Return list of empty form's fields
+    def _check_what_is_empty(self):
+        ask_for = []
+        for field, value in self.model.model_dump().items():
+            if value in [None, "", 0]:
+                ask_for.append(f'{field}')
+        return ask_for
+
 
     # Show summary of the form to the user
     def show_summary(self, cat):
@@ -149,9 +165,7 @@ class CForm:
     def update_from_user_response(self):
 
         # Extract new info
-        user_response_json = self._extract_info_from_scratch()
-        # user_response_json = self._extract_info_by_pydantic()
-        # user_response_json = self._extract_info_by_kor()
+        user_response_json = self._extract_info()
         if user_response_json is None:
             return False
 
@@ -173,51 +187,8 @@ class CForm:
         return True
 
 
-    #### MESSAGE to JSON - PYDANTIC & KOR IMPLEMENTATIONS ####
-
-    # Extracted new informations from the user's response (by pydantic)
-    def _extract_info_by_pydantic(self):
-        parser = PydanticOutputParser(pydantic_object=type(self.model))
-        prompt = PromptTemplate(
-            template="Answer the user query.\n{format_instructions}\n{query}\n",
-            input_variables=["query"],
-            partial_variables={"format_instructions": parser.get_format_instructions()},
-        )
-        log.debug(f'get_format_instructions: {parser.get_format_instructions()}')
-        
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        _input = prompt.format_prompt(query=user_message)
-        output = self.cat.llm(_input.to_string())
-        log.debug(f"output: {output}")
-
-        #user_response_json = parser.parse(output).dict()
-        user_response_json = json.loads(output)
-        log.debug(f'user response json: {user_response_json}')
-        return user_response_json
-
-
-    # Extracted new informations from the user's response (by kor)
-    def _extract_info_by_kor(self):
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        
-        schema, validator = from_pydantic(type(self.model))   
-        chain = create_extraction_chain(self.cat._llm, schema, encoder_or_encoder_class="json", validator=validator)
-        log.debug(f"prompt: {chain.prompt.to_string(user_message)}")
-        
-        output = chain.run(user_message)["validated_data"]
-        try:
-            user_response_json = output.dict()
-            log.debug(f'user response json: {user_response_json}')
-            return user_response_json
-        except Exception  as e:
-            log.debug(f"An error occurred: {e}")
-            return None
-
-
-    #### MESSAGE to JSON - FROM SCRATCH IMPLEMENTATION ####
-
     # Extracted new informations from the user's response (from sratch)
-    def _extract_info_from_scratch(self):
+    def _extract_info(self):
         user_message = self.cat.working_memory["user_message_json"]["text"]
         prompt = self._get_pydantic_prompt(user_message)
         log.debug(f"prompt: {prompt}")
@@ -225,6 +196,7 @@ class CForm:
         user_response_json = json.loads(json_str)
         log.debug(f'user response json:\n{user_response_json}')
         return user_response_json
+
 
     # return pydantic prompt based from examples
     def _get_pydantic_prompt(self, message):
@@ -243,6 +215,7 @@ class CForm:
         result += f"Sentence: {message}\nJSON:{json.dumps(self.model.dict(), indent=4)}\nUpdated JSON:"
         return result
 
+
     # format json for prompt
     def _format_prompt_json(self, values):
         attributes = list(self.model.__annotations__.keys())
@@ -250,9 +223,7 @@ class CForm:
         return json.dumps(data_dict, indent=4)
 
 
-    ## DIALOGUE METHODS ##
-   
-   # Execute the dialogue
+    # Execute the dialogue step
     def execute_dialogue(self):
         try:
             # update form from user response
@@ -266,6 +237,7 @@ class CForm:
             # If there was a validation problem, return the error message
             message = e.errors()[0]["msg"]
             response = self.cat.llm(message)
+            log.critical('> RETURN ERROR')
             return response
 
         log.warning(f"state:{self.state}, is completed:{self.is_completed()}")
@@ -275,32 +247,37 @@ class CForm:
             if self.check_confirm():
                 
                 # Execute action
-                if hasattr(type(self.model), 'execute_action'):
-                    response = type(self.model).execute_action(self.model)
-                else:
-                    return self.model.json()
-
-                del self.cat.working_memory[self.key]
-                return response
+                log.critical('> EXECUTE ACTION')
+                return self.execute_action()
         
         # Checks whether the form is completed
         if self.state == CFormState.ASK_INFORMATIONS and self.is_completed():
-            response = self.show_summary(self.cat)
-            return response
+            
+            # Get settings
+            settings = self.cat.mad_hatter.get_plugin().load_settings()
+            
+            # If ask_confirt is true, show summary and ask confirmation
+            if settings["ask_confirm"] is True:
+                response = self.show_summary(self.cat)
+                log.critical('> SHOW SUMMARY')
+                return response
+            else: #else, execute action
+                log.critical('> EXECUTE ACTION')
+                return self.execute_action()
 
         # If the form is not completed, ask for missing information
         response = self.ask_missing_information()
+        log.critical('> ASK MISSING INFORMATIONS')
         return response
    
 
-    # Check that there is only one active form
-    def _set_active_form(self):
-        if "_active_cforms" not in self.cat.working_memory.keys():
-            self.cat.working_memory["_active_cforms"] = []
-        if self.key not in self.cat.working_memory["_active_cforms"]:
-            self.cat.working_memory["_active_cforms"].append(self.key)
-        for key in self.cat.working_memory["_active_cforms"]:
-            if key != self.key:
-                self.cat.working_memory["_active_cforms"].remove(key)
-                if key in self.cat.working_memory.keys():
-                    self.cat.working_memory[key].state = CFormState.STOPPED
+    # Execute final form action
+    def execute_action(self):
+        if hasattr(type(self.model), 'execute_action'):
+            result = type(self.model).execute_action(self.model)
+        else:
+            result = self.model.json()
+        
+        del self.cat.working_memory[self.key]
+
+        return result

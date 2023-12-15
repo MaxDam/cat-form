@@ -27,28 +27,43 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
         
         # for each model ..
         for model in models:
+            try:
+                # Gets the key based on the model class name
+                key = model.__class__.__name__
 
-            # Gets the key based on the model class name
-            key = model.__class__.__name__
-
-            # If the key is not present -> initialize CForm and save it in working memory
-            if key not in cat.working_memory.keys():
+                # If the key is not present -> initialize CForm and save it in working memory
+                if key not in cat.working_memory.keys():
+                    
+                    # Create cform and put it into working memory
+                    cform = CForm(model=model, cat=cat, key=key)
+                    cat.working_memory[key] = cform
+                    log.critical(f'> CONFIGURED FORM {key}')
                 
-                # Create cform and put it into working memory
-                cform = CForm(model=model, cat=cat, key=key)
-                cat.working_memory[key] = cform
-            
-            else: # If the key is present and form is active -> execute dialog exchange
-                
-                # Get cform from working memory
-                cform = cat.working_memory[key]
-                
-                # If form is active -> execute dialog
-                if cform.is_active():
+                else: # If the key is present -> execute dialog exchange
+                    
+                    # Get cform from working memory
+                    cform = cat.working_memory[key]
+                    
+                    # Execute dialog exchange
                     response = cform.execute_dialogue()
                     return { "output": response }
-                
-    except Exception as e:
+                    
+                    '''
+                    # Manipulate dialog prompt
+                    cform.return_only_prompt = True
+                    response = cform.execute_dialogue()
+                    if cform.state == CFormState.EXECUTE_ACTION:
+                        return { "output": response }
+                    else:
+                        cat.working_memory["user_message_json"]["text"] = response
+                    '''
+
+            except Exception as catsBreath:
+                # Cat's breath, used to start the other tools
+                pass
+
+    except Exception as hookNotImplemented:
+        # The hook has not been implemented in any other plugin
         pass
 
     return fast_reply

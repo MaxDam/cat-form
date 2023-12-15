@@ -22,13 +22,13 @@ https://github.com/MaxDam/cat-form-usages
 class MyModel(BaseModel):
     field1: str | None = None
     field2: str | None = None
-	#...
+    #...
     
     @classmethod
     def get_prompt_examples(cls):
         return [ 
-			{
-				"sentence":    "# sentence",
+            {
+                "sentence":    "# sentence",
                 "json":        [# initial attributes],
                 "updatedJson": [# updated attributes]
             },
@@ -37,34 +37,34 @@ class MyModel(BaseModel):
                 "json":        [# initial attributes],
                 "updatedJson": [# updated attributes]
             }
-			#...
-		]
-		
-	@classmethod
+            #...
+        ]
+    
+    @classmethod
     def execute_action(cls, model):
-		# execute action
-		return # action output
-		
-	@classmethod
+        # execute action
+        return # action output
+    
+    @classmethod
     def prompt_prefix(cls, cat, prompt):
-		# manipulate prompt
+        # manipulate prompt
         return prompt
-		
-	@classmethod
+    
+    @classmethod
     def get_ask_missing_information_prompt(cls, cat, prompt):
         # manipulate prompt
         return prompt
-		
-	@classmethod
+    
+    @classmethod
     def get_show_summary_prompt(cls, cat, prompt):
         # manipulate prompt
         return prompt
-		
-	@classmethod
+    
+    @classmethod
     def get_check_confirm_prompt(cls, cat, prompt):
         # manipulate prompt
         return prompt
-```		
+```
 
 ### 2) Implement hook to set the module instance
 ```python 
@@ -77,7 +77,7 @@ def cform_set_model(models, cat):
 ```python 
 @tool(return_direct=True)
 def intent_start(model, cat):
-	''' <docString> '''
+    ''' <docString> '''
 
     if "MyModel" in cat.working_memory.keys():
         cform = cat.working_memory["MyModel"]
@@ -88,7 +88,7 @@ def intent_start(model, cat):
 ```python 
 @tool(return_direct=True)
 def intent_stop(model, cat):
-	''' <docString> '''
+    ''' <docString> '''
 
     if "MyModel" in cat.working_memory.keys():
         cform = cat.working_memory["MyModel"]

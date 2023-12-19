@@ -21,11 +21,21 @@ class CForm:
         self.model = model
         self.cat = cat
         self.key = key
-
+        
         self.model_is_updated   = False
         self.return_only_prompt = False
 
+        # CForm Hook - prompt_prefix(prompt, cat)
+        self.prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
+        if hasattr(type(self.model), 'prompt_prefix'):
+            self.prefix = type(self.model).prompt_prefix(self.prefix, self.cat)
+
+        # CForm Hook - language(language, cat)
+        self.language = 'English'
+        if hasattr(type(self.model), 'set_language'):
+            self.language = type(self.model).set_language(self.language, self.cat)
     
+
     ### ASK MISSING INFORMATIONS ###
 
     # Queries the llm asking for the missing fields of the form, without memory chain
@@ -34,36 +44,27 @@ class CForm:
         # Gets the information it should ask the user based on the fields that are still empty
         ask_for = self._check_what_is_empty()
 
-        # Get prompt
-        prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", '', cat=self.cat)
-
-        # CForm prompt_prefix(cat, prompt)
-        if hasattr(type(self.model), 'prompt_prefix'):
-            prefix = type(self.model).prompt_prefix(self.cat, prefix)
-
         # Get user message and chat history
         user_message = self.cat.working_memory["user_message_json"]["text"]
         chat_history = self.cat.agent_manager.agent_prompt_chat_history(
             self.cat.working_memory["history"]
         )
         
-        ## Conversation until now:{chat_history}
-        
         # Prompt
-        prompt = f"""{prefix}
-        Create a question for the user,
-        Below are some things to ask yourself in a conversational and confidential manner.
-        You should only ask one question at a time, even if you don't get all the information
-        Explain that you need some information. If the ask_for list is empty, thank them and ask how you can help them.
-        Try to be precise and detailed when describing what you need to know in the user's language 
-        and don't respond with a list of past conversations.
-        ### ask_for list: {ask_for}
-        - Human: {user_message}
-        - AI: """
+        prompt = f"{self.prefix}\n\
+        Below is are some things to ask the user for in a coversation way.\n\
+        You should only ask one question at a time even if you don't get all the info.\n\
+        Don't ask as a list! Don't greet the user! Don't say Hi.\n\
+        Explain you need to get some info.\n\
+        If the ask_for list is empty then thank them and ask how you can help them. \n\
+        Ask only one question at a time\n\n\
+        ### ask_for list: {ask_for}\n\n\
+        use {self.language} language."
+        print(f'prompt: {prompt}')
 
-        # CForm Hook - get_ask_missing_information_prompt(cat, prompt)
+        # CForm Hook - get_ask_missing_information_prompt(prompt, cat)
         if hasattr(type(self.model), 'get_ask_missing_information_prompt'):
-            prompt = type(self.model).get_ask_missing_information_prompt(self.cat, prompt)
+            prompt = type(self.model).get_ask_missing_information_prompt(prompt, ask_for, self.cat)
 
         # Return only prompt
         if self.return_only_prompt is True:
@@ -89,24 +90,22 @@ class CForm:
 
     # Show summary of the form to the user
     def show_summary(self, cat):
-        prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
         user_message = self.cat.working_memory["user_message_json"]["text"]
         chat_history = self.cat.agent_manager.agent_prompt_chat_history(
             self.cat.working_memory["history"]
         )
         
         # Prompt
-        prompt = f"""show the summary of the data in the completed form and ask the user if they are correct. 
-        Don't ask irrelevant questions. 
-        Try to be precise and detailed in describing the form and what you need to know.
-        ### form data: {self.model}
-        ## Conversation until now:{chat_history}
-        - Human: {user_message}
-        - AI: """
+        prompt = f"show the summary of the data in the completed form and ask the user if they are correct.\n\
+            Don't ask irrelevant questions.\n\
+            Try to be precise and detailed in describing the form and what you need to know.\n\n\
+            ### form data: {self.model}\n\n\
+            use {self.language} language."
+        print(f'prompt: {prompt}')
 
-        # CForm Hook - get_show_summary_prompt(cat, prompt)
+        # CForm Hook - get_show_summary_prompt(prompt, cat)
         if hasattr(type(self.model), 'get_show_summary_prompt'):
-            prompt = type(self.model).get_show_summary_prompt(self.cat, prompt)
+            prompt = type(self.model).get_show_summary_prompt(prompt, self.cat)
 
         # Change status
         self.state = CFormState.ASK_SUMMARY
@@ -124,22 +123,22 @@ class CForm:
 
     # Check user confirm the form data
     def check_confirm(self) -> bool:
+        
         user_message = self.cat.working_memory["user_message_json"]["text"]
         
         # Prompt
-        prompt = f"""
-        respond with either YES if the user's message is affirmative 
-        or NO if the user's message is not affirmative
-        - Human: {user_message}
-        - AI: """
+        prompt = f"only respond with YES if the user's message is affirmative\
+        or NO if the user message is negative, do not answer the other way.\n\n\
+        ### user message: {user_message}"
+        print(f'prompt: {prompt}')
 
-        # CForm Hook - get_check_confirm_prompt(cat, prompt)
+        # CForm Hook - get_check_confirm_prompt(prompt, cat)
         if hasattr(type(self.model), 'get_check_confirm_prompt'):
-            prompt = type(self.model).get_check_confirm_prompt(self.cat, prompt)
+            prompt = type(self.model).get_check_confirm_prompt(prompt, self.cat)
 
         # Queries the LLM and check if user is agree or not
         response = self.cat.llm(prompt)
-        log.debug(f'check_confirm: {response}')
+        log.critical(f'check_confirm: {response}')
         confirm = "YES" in response
         
         # If confirmed change status
@@ -193,9 +192,9 @@ class CForm:
     def _get_pydantic_prompt(self, message):
         lines = []
         
-        # CForm Hook - get_prompt_examples()
+        # CForm Hook - get_prompt_examples(cat)
         if hasattr(type(self.model), 'get_prompt_examples'):
-            prompt_examples = type(self.model).get_prompt_examples()
+            prompt_examples = type(self.model).get_prompt_examples(self.cat)
             for example in prompt_examples:
                 lines.append(f"Sentence: {example['sentence']}")
                 lines.append(f"JSON: {self._format_prompt_json(example['json'])}")
@@ -301,16 +300,20 @@ class CForm:
                 return self._execute_action()
         
         # Checks whether the form is completed
-        if self.state == CFormState.ASK_INFORMATIONS and self.is_completed():
+        if self.state in [CFormState.ASK_INFORMATIONS, CFormState.STARTED] and self.is_completed():
             
             # Get settings
             settings = self.cat.mad_hatter.get_plugin().load_settings()
             
-            # If ask_confirt is true, show summary and ask confirmation
+            # If ask_confirm is true, show summary and ask confirmation
             if settings["ask_confirm"] is True:
+                
+                # Show summary
                 response = self.show_summary(self.cat)
+
                 log.critical('> SHOW SUMMARY')
                 return response
+            
             else: #else, execute action
                 log.critical(f'> EXECUTE ACTION {self.key}')
                 return self._execute_action()
@@ -325,9 +328,9 @@ class CForm:
     # Execute final form action
     def _execute_action(self):
         
-        # CForm Hook - execute_action(model)
+        # CForm Hook - execute_action(model, cat)
         if hasattr(type(self.model), 'execute_action'):
-            result = type(self.model).execute_action(self.model)
+            result = type(self.model).execute_action(self.model, self.cat)
         else:
             result = self.model.json()
         

@@ -24,8 +24,9 @@ class MyModel(BaseModel):
     field2: str | None = None
     #...
     
+	# CForm Hook Get Prompt Examples
     @classmethod
-    def get_prompt_examples(cls):
+    def get_prompt_examples(cls, cat):
         return [ 
             {
                 "sentence":    "# sentence",
@@ -40,28 +41,38 @@ class MyModel(BaseModel):
             #...
         ]
     
+	# CForm Hook Action
     @classmethod
-    def execute_action(cls, model):
+    def execute_action(cls, model, cat):
         # execute action
         return # action output
     
+	# CForm Hook Prompt Prefix
     @classmethod
-    def prompt_prefix(cls, cat, prompt):
+    def prompt_prefix(cls, prompt, cat):
         # manipulate prompt
         return prompt
     
+	# CForm Hook Set language
+	@classmethod
+    def set_language(cls, language, cat):
+        return "English"
+	
+	# CForm Hook get ask missing informations	
     @classmethod
-    def get_ask_missing_information_prompt(cls, cat, prompt):
+    def get_ask_missing_information_prompt(cls, prompt, ask_for, cat):
         # manipulate prompt
         return prompt
     
+	# CForm Hook get show summary prompt
     @classmethod
-    def get_show_summary_prompt(cls, cat, prompt):
+    def get_show_summary_prompt(cls, prompt, cat):
         # manipulate prompt
         return prompt
     
+	# CForm Hook get confirm prompt
     @classmethod
-    def get_check_confirm_prompt(cls, cat, prompt):
+    def get_check_confirm_prompt(cls, prompt, cat):
         # manipulate prompt
         return prompt
 ```

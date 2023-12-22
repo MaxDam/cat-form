@@ -10,7 +10,6 @@ class CFormState(Enum):
     STARTED             = 0    
     ASK_INFORMATIONS    = 1
     ASK_SUMMARY         = 2
-    EXECUTE_ACTION      = 3
 
 
 # Class Conversational Form
@@ -22,6 +21,8 @@ class CForm(BaseModel):
     _model_is_updated : bool
     _language :         str
     _prompt_prefix :    str
+    _ask_for :          []
+    _is_completed       : bool
     
     def __init__(self, key, cat):
         super().__init__()
@@ -40,39 +41,62 @@ class CForm(BaseModel):
     def get_model(self):
         return self.dict(exclude={"_.*"})
     
+    
+    # Fill list of empty form's fields
+    def _check_what_fields_are_empty(self):
+        ask_for = []
+        
+        for field, value in self.get_model().items():
+            if value in [None, "", 0]:
+                ask_for.append(f'{field}')
 
-    ### ASK MISSING INFORMATIONS ###
+        self._ask_for = ask_for
+        self._is_completed = not self._ask_for
+
+
+    ### ASK INFORMATIONS ###
 
     # Queries the llm asking for the missing fields of the form, without memory chain
     def ask_missing_information(self) -> str:
        
-        # Gets the information it should ask the user based on the fields that are still empty
-        ask_for = self._check_what_is_empty()
-
-        # Prompt
+        ''' OLD PROMPT
         prompt = f"Below is are some things to ask the user for in a coversation way.\n\
         You should only ask one question at a time even if you don't get all the info.\n\
         Don't ask as a list! Don't greet the user! Don't say Hi.\n\
         Explain you need to get some info.\n\
         If the ask_for list is empty then thank them and ask how you can help them. \n\
         Ask only one question at a time\n\n\
-        ### ask_for list: {ask_for}\n\n\
-        use {self._language} language."
+        ### ask_for list: {self._ask_for}\n\n\
+        using {self._language} language."'''
+
+        # Prompt
+        prompt = f"Imagine you have to fill out a registration form and some information is missing.\n\
+        Please ask to provide missing details. Missing information can be found in the ask_for list.\n\
+        Example:\n\
+        if ask_for list is provided by [name, address]\n\
+        ask: may I know your name?\n\
+        Ask for one piece of information at a time.\n\
+        Be sure to maintain a friendly and professional tone when requesting this information.\n\
+        using {self._language} language.\n\n\
+        ### ask_for list: {self._ask_for}"
         print(f'prompt: {prompt}')
 
-        log.warning(f'MISSING INFORMATIONS: {ask_for}')
         response = self._cat.llm(prompt)
-
         return response 
 
 
-    # Return list of empty form's fields
-    def _check_what_is_empty(self):
-        ask_for = []
-        for field, value in self.get_model().items():
-            if value in [None, "", 0]:
-                ask_for.append(f'{field}')
-        return ask_for
+    # Queries the lllm asking for the fields to be modified in the form, without a memory chain
+    def ask_change_information(self) -> str:
+       
+        #Prompt
+        prompt = f"Your form contains all the necessary information, show the summary of the data\n\
+        present in the completed form and ask the user if he wants to change something.\n\
+        ### form data: {self.get_model()}\n\
+        using the {self._language} language."
+        print(f'prompt: {prompt}')
+
+        response = self._cat.llm(prompt)
+        return response 
 
 
     ### SUMMARIZATION ###
@@ -80,16 +104,20 @@ class CForm(BaseModel):
     # Show summary of the form to the user
     def show_summary(self, cat):
         
-        # Prompt
-        prompt = f"show the summary of the data in the completed form and ask the user if they are correct.\n\
+        ''' OLD PROMPT
+        prompt = f"Show the summary of the data in the completed form and ask the user if they are correct.\n\
             Don't ask irrelevant questions.\n\
             Try to be precise and detailed in describing the form and what you need to know.\n\n\
             ### form data: {self.get_model()}\n\n\
-            use {self._language} language."
+            using {self._language} language."'''
+        
+        # Prompt
+        prompt = f"You have collected the following information from the user:\n\
+        ### form data: {self.get_model()}\n\n\
+        Summarize the information contained in the form data.\n\
+        Next, ask the user to confirm whether the information collected is correct.\n\
+        Using {self._language} language."
         print(f'prompt: {prompt}')
-
-        # Change status
-        self._state = CFormState.ASK_SUMMARY
 
         # Queries the LLM
         response = self._cat.llm(prompt)
@@ -97,26 +125,32 @@ class CForm(BaseModel):
 
 
     # Check user confirm the form data
-    def check_confirm(self) -> bool:
+    def check_user_confirm(self) -> bool:
         
         # Get user message
         user_message = self._cat.working_memory["user_message_json"]["text"]
         
-        # Prompt
+        ''' OLD PROMPT
         prompt = f"only respond with YES if the user's message is affirmative\
         or NO if the user message is negative, do not answer the other way.\n\n\
+        ### user message: {user_message}"'''
+
+        # Confirm prompt
+        confirm_prompt = f"Given a sentence that I will now give you,\n\
+        just respond with 'true' or 'false' depending on whether the sentence is:\n\
+        - a refusal either has a negative meaning or is an intention to cancel the form (false)\n\
+        - an acceptance has a positive or neutral meaning (true).\n\
+        If you are unsure, answer 'false'.\n\
+        The sentence is as follows:\n\
         ### user message: {user_message}"
-        print(f'prompt: {prompt}')
+        print(f'confirm prompt: {confirm_prompt}')
 
         # Queries the LLM and check if user is agree or not
-        response = self._cat.llm(prompt)
-        log.critical(f'check_confirm: {response}')
-        confirm = "YES" in response
+        response = self._cat.llm(confirm_prompt)
+        log.critical(f'check_user_confirm: {response}')
+        #confirm = "YES" in response
+        confirm = "true" in response
         
-        # If confirmed change status
-        if confirm:
-            self._state = CFormState.EXECUTE_ACTION
-
         return confirm
 
 
@@ -190,14 +224,6 @@ class CForm(BaseModel):
 
     ### EXECUTE DIALOGUE ###
 
-    # Check if the form is completed
-    def is_completed(self):
-        for k, v in self.get_model().items():
-            if v in [None, ""]:
-                return False
-        return True
-    
-
     # Check that there is only one active form
     def set_active_form(self):
         if "_active_cforms" not in self._cat.working_memory.keys():
@@ -218,9 +244,15 @@ class CForm(BaseModel):
             # update form from user response
             self._model_is_updated = self.update_from_user_response()
             
+            # Fill the information it should ask the user based on the fields that are still empty
+            self._check_what_fields_are_empty()
+            log.warning(f'MISSING INFORMATIONS: {self._ask_for}')
+            
             # (Cat's breath) Check if it's time to skip the conversation step
             if self._check_skip_conversation_step(): 
                 log.critical(f'> SKIP CONVERSATION STEP {self._key}')
+                #TODO Aggiungere al messaggio utente alcune informazioni per comunicare al llm come comportarsi
+                #self._cat.working_memory["user_message_json"]["text"] = "..."
                 return None
 
         except ValidationError as e:
@@ -230,18 +262,27 @@ class CForm(BaseModel):
             log.critical('> RETURN ERROR')
             return response
 
-        log.warning(f"state:{self._state}, is completed:{self.is_completed()}")
+        log.warning(f"state:{self._state}, is completed:{self._is_completed}")
 
-        # Checks whether it should execute the action
-        if self._state == CFormState.ASK_SUMMARY:
-            if self.check_confirm():
-                
+        # If the form is not completed, ask for missing information
+        if not self._is_completed:
+            self._state  = CFormState.ASK_INFORMATIONS
+            response = self.ask_missing_information()
+            log.critical(f'> ASK MISSING INFORMATIONS {self._key}')
+            return response
+
+        # If the form is completed and state = ASK_SUMMARY ..
+        if self._state in [CFormState.ASK_SUMMARY]:
+            
+            # Check confirm from user answer
+            if self.check_user_confirm():
+
                 # Execute action
                 log.critical(f'> EXECUTE ACTION {self._key}')
                 return self.execute_action()
         
-        # Checks whether the form is completed
-        if self._state in [CFormState.ASK_INFORMATIONS, CFormState.STARTED] and self.is_completed():
+        # If the form is completed and state in STARTED or ASK_INFORMATIONS ..
+        if self._state in [CFormState.STARTED, CFormState.ASK_INFORMATIONS]:
             
             # Get settings
             settings = self._cat.mad_hatter.get_plugin().load_settings()
@@ -252,6 +293,9 @@ class CForm(BaseModel):
                 # Show summary
                 response = self.show_summary(self._cat)
 
+                # Change status in ASK_SUMMARY
+                self._state = CFormState.ASK_SUMMARY
+        
                 log.critical('> SHOW SUMMARY')
                 return response
             
@@ -259,10 +303,10 @@ class CForm(BaseModel):
                 log.critical(f'> EXECUTE ACTION {self._key}')
                 return self.execute_action()
 
-        # If the form is not completed, ask for missing information
+        # If the form is completed, ask for missing information
         self._state  = CFormState.ASK_INFORMATIONS
-        response = self.ask_missing_information()
-        log.critical(f'> ASK MISSING INFORMATIONS {self._key}')
+        response = self.ask_change_information()
+        log.critical(f'> ASK CHANGE INFORMATIONS {self._key}')
         return response
    
 

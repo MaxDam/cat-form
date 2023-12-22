@@ -1,4 +1,4 @@
-from cat.mad_hatter.decorators import tool, hook, plugin
+from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
 from typing import Dict
 from .cform import CForm

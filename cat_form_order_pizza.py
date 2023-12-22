@@ -1,4 +1,4 @@
-from cat.mad_hatter.decorators import tool, hook, plugin
+from cat.mad_hatter.decorators import tool, hook
 from pydantic import field_validator
 from cat.log import log
 from typing import Dict
@@ -69,7 +69,8 @@ class PizzaOrder(CForm):
 # Order pizza start intent
 @tool(return_direct=True)
 def start_order_pizza_intent(input, cat):
-    """I would like to order a pizza I'll take a pizza"""
+    """I would like to order a pizza
+    I'll take a Margherita pizza"""
     log.critical("INTENT ORDER PIZZA START")
     return PizzaOrder.start(cat)
 
@@ -103,9 +104,7 @@ menu = [
 @tool()
 def ask_menu(input, cat):
     """What is on the menu?
-    Which types of pizza do you have?
-    Can I see the pizza menu?
-    I want a menu"""
+    Which types of pizza do you have?"""
 
     log.critical("INTENT ORDER PIZZA MENU")
     # return menu

@@ -51,8 +51,7 @@ class CForm:
         )
         
         # Prompt
-        prompt = f"{self.prefix}\n\
-        Below is are some things to ask the user for in a coversation way.\n\
+        prompt = f"Below is are some things to ask the user for in a coversation way.\n\
         You should only ask one question at a time even if you don't get all the info.\n\
         Don't ask as a list! Don't greet the user! Don't say Hi.\n\
         Explain you need to get some info.\n\

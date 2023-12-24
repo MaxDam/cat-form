@@ -14,9 +14,9 @@ the cat knows how to collect the data you need in a conversational way!
 
 ### Activate Cat Form plugin, and in another plugin:
 
-### 1) Prepare the pydantic form with field and special class methods
+### 1) Prepare the pydantic model which extends CForm class
 ```python 
-class MyModel(BaseModel):
+class MyModel(CForm):
     field1: str | None = None
     field2: str | None = None
     #...
@@ -66,7 +66,7 @@ def intent_stop(model, cat):
     return MyModel.stop(cat)
 ```
 
-### 6) Implement agent_fast_reply
+### 6) Implement agent_fast_reply for dialog exchange
 ```python 
 @hook()
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:

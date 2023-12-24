@@ -1,15 +1,21 @@
 from cat.mad_hatter.decorators import tool, hook
-from pydantic import field_validator
+from pydantic import field_validator, Field
 from cat.log import log
 from typing import Dict
-from .cform import CForm
+from .cform import CForm, cform
 import random
 
-# CForm class
+
 class PizzaOrder(CForm):
     pizza_type: str | None = None
-    address: str | None = None
-    phone: str | None = None
+    address:    str | None = None
+    phone:      str | None = None
+
+    '''
+    pizza_type: str | None = Field(description="The type of pizza the user wants")
+    address:    str | None = Field(description="The user's address where they want the pizza to be delivered")
+    phone:      str | None = Field(description="The user's telephone number for any communications")
+    '''
     
     @field_validator("pizza_type")
     @classmethod
@@ -22,10 +28,36 @@ class PizzaOrder(CForm):
         pizza_types = list(menu)
         if pizza_type not in pizza_types:
             raise ValueError(f"{pizza_type} is not present in the menù")
-        
-    # Order pizza get examples
-    def get_prompt_examples(self):
-        return [
+
+
+
+@cform(PizzaOrder)
+def execute_action(cat, model):
+    result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 
+    result += "<table border=0>"
+    result += "<tr>"
+    result += "   <td>Pizza Type</td>"
+    result += f"  <td>{model.pizza_type}</td>"
+    result += "</tr>"
+    result += "<tr>"
+    result += "   <td>Address</td>"
+    result += f"  <td>{model.address}</td>"
+    result += "</tr>"
+    result += "<tr>"
+    result += "   <td>Phone Number</td>"
+    result += f"  <td>{model.phone}</td>"
+    result += "</tr>"
+    result += "</table>"
+    result += "<br>"                                                                                                     
+    result += "Thanks for your order.. your pizza is on its way!"
+    result += "<br><br>"
+    result += f"<img style='width:400px' src='https://maxdam.github.io/cat-pizza-challenge/img/order/pizza{random.randint(0, 6)}.jpg'>"
+    return result
+
+
+@cform(PizzaOrder)
+def get_prompt_examples():
+    return [
             {
                 "sentence": "I want to order a pizza",
                 "json": [None, None, None],
@@ -37,33 +69,6 @@ class PizzaOrder(CForm):
                 "updatedJson": ["Margherita", "Via Roma 1", None]
             }
         ]
-    
-    # Order pizza set language
-    def get_language(self):
-        return "Italian"
-
-    # Order pizza execute action
-    def execute_action(self):
-        result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 
-        result += "<table border=0>"
-        result += "<tr>"
-        result += "   <td>Pizza Type</td>"
-        result += f"  <td>{self.pizza_type}</td>"
-        result += "</tr>"
-        result += "<tr>"
-        result += "   <td>Address</td>"
-        result += f"  <td>{self.address}</td>"
-        result += "</tr>"
-        result += "<tr>"
-        result += "   <td>Phone Number</td>"
-        result += f"  <td>{self.phone}</td>"
-        result += "</tr>"
-        result += "</table>"
-        result += "<br>"                                                                                                     
-        result += "Thanks for your order.. your pizza is on its way!"
-        result += "<br><br>"
-        result += f"<img style='width:400px' src='https://maxdam.github.io/cat-pizza-challenge/img/order/pizza{random.randint(0, 6)}.jpg'>"
-        return result
 
 
 # Order pizza start intent

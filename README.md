@@ -11,9 +11,6 @@ the cat knows how to collect the data you need in a conversational way!
 
 ## Usage
 
-
-### Activate Cat Form plugin, and in another plugin:
-
 ### 1) Prepare the pydantic model which extends CForm class
 ```python 
 class MyModel(CForm):

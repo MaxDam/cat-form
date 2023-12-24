@@ -3,9 +3,6 @@
 
 the cat knows how to collect the data you need in a conversational way!
 
-You can see an example implementation here:
-https://github.com/MaxDam/cat-form-usages
-
 
 <img src="./img/thumb.jpg" width=400>
 
@@ -24,85 +21,54 @@ class MyModel(BaseModel):
     field2: str | None = None
     #...
     
-	# CForm Hook Get Prompt Examples
-    @classmethod
-    def get_prompt_examples(cls, cat):
-        return [ 
-            {
-                "sentence":    "# sentence",
-                "json":        [# initial attributes],
-                "updatedJson": [# updated attributes]
-            },
-            {
-                "sentence":    "# sentence",
-                "json":        [# initial attributes],
-                "updatedJson": [# updated attributes]
-            }
-            #...
-        ]
-    
-	# CForm Hook Action
-    @classmethod
-    def execute_action(cls, model, cat):
-        # execute action
-        return # action output
-    
-	# CForm Hook Prompt Prefix
-    @classmethod
-    def prompt_prefix(cls, prompt, cat):
-        # manipulate prompt
-        return prompt
-    
-	# CForm Hook Set language
-	@classmethod
-    def set_language(cls, language, cat):
-        return "English"
-	
-	# CForm Hook get ask missing informations	
-    @classmethod
-    def get_ask_missing_information_prompt(cls, prompt, ask_for, cat):
-        # manipulate prompt
-        return prompt
-    
-	# CForm Hook get show summary prompt
-    @classmethod
-    def get_show_summary_prompt(cls, prompt, cat):
-        # manipulate prompt
-        return prompt
-    
-	# CForm Hook get confirm prompt
-    @classmethod
-    def get_check_confirm_prompt(cls, prompt, cat):
-        # manipulate prompt
-        return prompt
 ```
 
-### 2) Implement hook to set the module instance
+### 2) Implement get prompt example annotation method
 ```python 
-@hook
-def cform_set_model(models, cat):
-    return models.append(MyModel())
+@cform(MyModel)
+def get_prompt_examples():
+    return [ 
+        {
+            "sentence":    "# sentence",
+            "json":        [# initial attributes],
+            "updatedJson": [# updated attributes]
+        },
+        {
+            "sentence":    "# sentence",
+            "json":        [# initial attributes],
+            "updatedJson": [# updated attributes]
+        }
+        #...
+    ]
 ```
 
-### 3) Implement tool intent start
+### 3) Implement execute action annotation method
+```python 
+@cform(MyModel)
+def execute_action(cat, model):
+    # execute action
+    return # action output
+```
+
+### 4) Implement tool intent start
 ```python 
 @tool(return_direct=True)
 def intent_start(model, cat):
     ''' <docString> '''
-
-    if "MyModel" in cat.working_memory.keys():
-        cform = cat.working_memory["MyModel"]
-        return cform.start_conversation()
+    return MyModel.start(cat)
 ```
 
-### 4) Implement tool intent stop
+### 5) Implement tool intent stop
 ```python 
 @tool(return_direct=True)
 def intent_stop(model, cat):
     ''' <docString> '''
+    return MyModel.stop(cat)
+```
 
-    if "MyModel" in cat.working_memory.keys():
-        cform = cat.working_memory["MyModel"]
-        cform.stop_conversation()    
-    return
+### 6) Implement agent_fast_reply
+```python 
+@hook()
+def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
+    return MyModel.dialogue(cat)
 ```

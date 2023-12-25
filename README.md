@@ -33,9 +33,9 @@ class MyModel(CForm):
             }
             #...
         ]
-	
-	# Implement execute action overriding method
-	def execute_action(self):
+    
+    # Implement execute action overriding method
+    def execute_action(self):
         # execute action
         return # action output
 ```

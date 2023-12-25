@@ -19,7 +19,6 @@ class MyModel(CForm):
     #...
     
 	# Get Prompt Examples
-    @classmethod
     def examples(self):
         return [ 
             {
@@ -34,11 +33,16 @@ class MyModel(CForm):
             }
             #...
         ]
+	
+	# Implement execute action overriding method
+	def execute_action(self):
+        # execute action
+        return # action output
 ```
 
 ### 2) Implement execute action annotation method
 ```python 
-@cform
+@hook
 def execute_action(model: MyModel):
     # execute action
     return # action output
@@ -54,7 +58,7 @@ def intent_start(model, cat):
 
 ### 4) Implement tool intent stop
 ```python 
-@tool(return_direct=True)
+@tool
 def intent_stop(model, cat):
     ''' <docString> '''
     return MyModel.stop(cat)
@@ -62,7 +66,7 @@ def intent_stop(model, cat):
 
 ### 5) Implement agent_fast_reply for dialog exchange
 ```python 
-@hook()
+@hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     return MyModel.dialogue(cat)
 ```

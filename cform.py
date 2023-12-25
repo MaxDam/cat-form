@@ -7,17 +7,6 @@ from enum import Enum
 import guardrails as gd
 
 
-# Collect several cform annotated functions
-cform_functions = []
-
-# Decorator @cform
-def cform(func):
-    cform_functions.append(func)
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-    return wrapper
-
-
 # Conversational Form State
 class CFormState(Enum):
     ASK_INFORMATIONS    = 0
@@ -438,31 +427,31 @@ class CForm(BaseModel):
         return True
 
 
-    # Execute final form action
-    def execute_action(self):
-        # Get the class name
-        class_name = self.__class__.__name__
-
-        # Look for methods annotated with @Action and with model equal to the curren class
-        for func in cform_functions:
-            if hasattr(func, "__annotations__")\
-            and len(func.__annotations__) > 0\
-            and list(func.__annotations__.values())[0].__name__ == class_name\
-            and func.__name__ == 'execute_action':
-                del self._cat.working_memory[self._key]
-                return func(self)
-
-        # Default result
-        del self._cat.working_memory[self._key]
-        return self.get_model()   
-
-
     # METHODS TO OVERRIDE
 
     # Get prompt examples
     def examples(self):
         # Default result
         return []
+    
+
+    # Execute final form action
+    def execute_action(self):
+        # Get the class name
+        class_name = self.__class__.__name__
+
+        # Look for methods annotated with @hook called execute_action and with parameter model equal to the curren class
+        for hook in self._cat.mad_hatter.hooks["execute_action"]:
+            func = hook.function
+            if hasattr(func, "__annotations__")\
+            and len(func.__annotations__) > 0\
+            and list(func.__annotations__.values())[0].__name__ == class_name:
+                del self._cat.working_memory[self._key]
+                return func(self)
+
+        # Default result
+        del self._cat.working_memory[self._key]
+        return self.get_model()   
 
 
     # CLASS METHODS

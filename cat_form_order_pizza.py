@@ -2,7 +2,7 @@ from cat.mad_hatter.decorators import tool, hook
 from pydantic import field_validator, Field
 from cat.log import log
 from typing import Dict
-from .cform import CForm, cform
+from .cform import CForm
 import random
 
 
@@ -30,6 +30,11 @@ class PizzaOrder(CForm):
                 "updatedJson": ["Margherita", "Via Roma 1", None]
             }
         ]
+    
+    '''
+    def execute_action(self):
+        pass
+    '''
 
     @field_validator("pizza_type")
     @classmethod
@@ -45,7 +50,7 @@ class PizzaOrder(CForm):
 
 
 # Execute action (called when the form is completed and confirmed)
-@cform
+@hook
 def execute_action(model: PizzaOrder):
     result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 
     result += "<table border=0>"
@@ -79,7 +84,7 @@ def start_order_pizza_intent(input, cat):
 
  
 # Order pizza stop intent
-@tool()
+@tool
 def stop_order_pizza_intent(input, cat):
     """I don't want to order pizza anymore, 
     I want to give up on the order, 
@@ -89,7 +94,7 @@ def stop_order_pizza_intent(input, cat):
 
 
 # Order pizza handle conversation
-@hook()
+@hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     return PizzaOrder.dialogue(cat)
 

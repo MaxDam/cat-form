@@ -1,7 +1,7 @@
 from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
 from typing import Dict
-from .cform import CForm, cform
+from .cform import CForm
 from pydantic import Field
 
 
@@ -31,10 +31,15 @@ class UserRegistration(CForm):
                 "updatedJson": ["John", "Smith", None, None]
             }
         ]
+    
+    '''
+    def execute_action(self):
+        pass
+    '''
 
 
 # Execute action (called when the form is completed and confirmed)
-@cform
+@hook
 def execute_action(model: UserRegistration):
     result = "<h3>You have registered<h3><br>" 
     result += "<table border=0>"
@@ -67,7 +72,7 @@ def start_register_intent(input, cat):
 
 
 # Stop intent
-@tool()
+@tool
 def stop_register_intent(input, cat):
     """I don't want to continue this user registration"""
     log.critical("INTENT USER REGISTRATION STOP")
@@ -75,6 +80,6 @@ def stop_register_intent(input, cat):
 
 
 # Order pizza handle conversation
-@hook()
+@hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     return UserRegistration.dialogue(cat)

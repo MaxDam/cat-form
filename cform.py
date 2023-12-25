@@ -10,14 +10,12 @@ import guardrails as gd
 # Collect several cform annotated functions
 cform_functions = []
 
-# Decorator @cform with form_name parameter
-def cform(model):
-    def decorator(func):
-        cform_functions.append((func, model))
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
+# Decorator @cform
+def cform(func):
+    cform_functions.append(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
 
 
 # Conversational Form State
@@ -264,7 +262,7 @@ class CForm(BaseModel):
     def _get_pydantic_prompt(self, message):
         lines = []
         
-        prompt_examples = self.get_prompt_examples()
+        prompt_examples = self.examples()
         for example in prompt_examples:
             lines.append(f"Sentence: {example['sentence']}")
             lines.append(f"JSON: {self._format_prompt_json(example['json'])}")
@@ -283,20 +281,6 @@ class CForm(BaseModel):
         attributes = list(self.get_model().keys())
         data_dict = dict(zip(attributes, values))
         return json.dumps(data_dict, indent=4)
-
-
-    # Get prompt examples
-    def get_prompt_examples(self):
-        # Get the class name
-        class_name = self.__class__.__name__
-        
-        # Look for methods annotated with @Action and with model equal to the curren class
-        for func, model in cform_functions:
-            if hasattr(model, "__name__") and model.__name__ == class_name and func.__name__ == 'get_prompt_examples':
-                return func()
-
-        # Default result
-        return []
 
 
     #TODO IT DOES NOT WORK, need to check why
@@ -460,14 +444,25 @@ class CForm(BaseModel):
         class_name = self.__class__.__name__
 
         # Look for methods annotated with @Action and with model equal to the curren class
-        for func, model in cform_functions:
-            if hasattr(model, "__name__") and model.__name__ == class_name and func.__name__ == 'execute_action':
+        for func in cform_functions:
+            if hasattr(func, "__annotations__")\
+            and len(func.__annotations__) > 0\
+            and list(func.__annotations__.values())[0].__name__ == class_name\
+            and func.__name__ == 'execute_action':
                 del self._cat.working_memory[self._key]
-                return func(self._cat, self)
+                return func(self)
 
         # Default result
         del self._cat.working_memory[self._key]
         return self.get_model()   
+
+
+    # METHODS TO OVERRIDE
+
+    # Get prompt examples
+    def examples(self):
+        # Default result
+        return []
 
 
     # CLASS METHODS

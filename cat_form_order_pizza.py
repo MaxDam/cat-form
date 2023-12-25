@@ -17,6 +17,20 @@ class PizzaOrder(CForm):
     phone:      str | None = Field(description="The user's telephone number for any communications")
     '''
     
+    def examples(self):
+        return [
+            {
+                "sentence": "I want to order a pizza",
+                "json": [None, None, None],
+                "updatedJson": [None, None, None]
+            },
+            {
+                "sentence": "I live in Via Roma 1",
+                "json": ["Margherita", None, None],
+                "updatedJson": ["Margherita", "Via Roma 1", None]
+            }
+        ]
+
     @field_validator("pizza_type")
     @classmethod
     def validate_pizza_type(cls, pizza_type: str):
@@ -30,9 +44,9 @@ class PizzaOrder(CForm):
             raise ValueError(f"{pizza_type} is not present in the menù")
 
 
-
-@cform(PizzaOrder)
-def execute_action(cat, model):
+# Execute action (called when the form is completed and confirmed)
+@cform
+def execute_action(model: PizzaOrder):
     result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 
     result += "<table border=0>"
     result += "<tr>"
@@ -53,22 +67,6 @@ def execute_action(cat, model):
     result += "<br><br>"
     result += f"<img style='width:400px' src='https://maxdam.github.io/cat-pizza-challenge/img/order/pizza{random.randint(0, 6)}.jpg'>"
     return result
-
-
-@cform(PizzaOrder)
-def get_prompt_examples():
-    return [
-            {
-                "sentence": "I want to order a pizza",
-                "json": [None, None, None],
-                "updatedJson": [None, None, None]
-            },
-            {
-                "sentence": "I live in Via Roma 1",
-                "json": ["Margherita", None, None],
-                "updatedJson": ["Margherita", "Via Roma 1", None]
-            }
-        ]
 
 
 # Order pizza start intent

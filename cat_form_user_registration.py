@@ -18,9 +18,24 @@ class UserRegistration(CForm):
     email:   str | None = Field(description="Email of the user who wants to register")
     '''
 
+    def examples(self):
+        return [
+            {
+                "sentence": "Hello, I would register me for this service",
+                "json": [None, None, None, None],
+                "updatedJson": [None, None, None, None]
+            },
+            {
+                "sentence": "Hello, my surname is Smith",
+                "json": ["John", None, None, None],
+                "updatedJson": ["John", "Smith", None, None]
+            }
+        ]
 
-@cform(UserRegistration)
-def execute_action(cat, model):
+
+# Execute action (called when the form is completed and confirmed)
+@cform
+def execute_action(model: UserRegistration):
     result = "<h3>You have registered<h3><br>" 
     result += "<table border=0>"
     result += "<tr>"
@@ -41,22 +56,6 @@ def execute_action(cat, model):
     result += "</tr>"
     result += "</table>"
     return result
-
-
-@cform(UserRegistration)
-def get_prompt_examples():
-    return [
-            {
-                "sentence": "Hello, I would register me for this service",
-                "json": [None, None, None, None],
-                "updatedJson": [None, None, None, None]
-            },
-            {
-                "sentence": "Hello, my surname is Smith",
-                "json": ["John", None, None, None],
-                "updatedJson": ["John", "Smith", None, None]
-            }
-        ]
 
 
 # Start intent

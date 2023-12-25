@@ -18,36 +18,33 @@ class MyModel(CForm):
     field2: str | None = None
     #...
     
+	# Get Prompt Examples
+    @classmethod
+    def examples(self):
+        return [ 
+            {
+                "sentence":    "# sentence",
+                "json":        [# initial attributes],
+                "updatedJson": [# updated attributes]
+            },
+            {
+                "sentence":    "# sentence",
+                "json":        [# initial attributes],
+                "updatedJson": [# updated attributes]
+            }
+            #...
+        ]
 ```
 
-### 2) Implement get prompt example annotation method
+### 2) Implement execute action annotation method
 ```python 
-@cform(MyModel)
-def get_prompt_examples():
-    return [ 
-        {
-            "sentence":    "# sentence",
-            "json":        [# initial attributes],
-            "updatedJson": [# updated attributes]
-        },
-        {
-            "sentence":    "# sentence",
-            "json":        [# initial attributes],
-            "updatedJson": [# updated attributes]
-        }
-        #...
-    ]
-```
-
-### 3) Implement execute action annotation method
-```python 
-@cform(MyModel)
-def execute_action(cat, model):
+@cform
+def execute_action(model: MyModel):
     # execute action
     return # action output
 ```
 
-### 4) Implement tool intent start
+### 3) Implement tool intent start
 ```python 
 @tool(return_direct=True)
 def intent_start(model, cat):
@@ -55,7 +52,7 @@ def intent_start(model, cat):
     return MyModel.start(cat)
 ```
 
-### 5) Implement tool intent stop
+### 4) Implement tool intent stop
 ```python 
 @tool(return_direct=True)
 def intent_stop(model, cat):
@@ -63,7 +60,7 @@ def intent_stop(model, cat):
     return MyModel.stop(cat)
 ```
 
-### 6) Implement agent_fast_reply for dialog exchange
+### 5) Implement agent_fast_reply for dialog exchange
 ```python 
 @hook()
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:

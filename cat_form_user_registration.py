@@ -1,37 +1,17 @@
 from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
 from typing import Dict
-from .cform import CForm
+from .cform import CBaseModel
 from pydantic import Field
 
 
-class UserRegistration(CForm):
-    name:    str | None = None
-    surname: str | None = None
-    company: str | None = None
-    email:   str | None = None
-
-    '''
-    name:    str | None = Field(description="Name of the user who wants to register")
-    surname: str | None = Field(description="Surname of the user who wants to register")
-    company: str | None = Field(description="Company where the user who wants to register works")
-    email:   str | None = Field(description="Email of the user who wants to register")
-    '''
-
-    def examples(self):
-        return [
-            {
-                "sentence": "Hello, I would register me for this service",
-                "json": [None, None, None, None],
-                "updatedJson": [None, None, None, None]
-            },
-            {
-                "sentence": "Hello, my surname is Smith",
-                "json": ["John", None, None, None],
-                "updatedJson": ["John", "Smith", None, None]
-            }
-        ]
+class UserRegistration(CBaseModel):
     
+    name:    str = Field(description="Name of the user who wants to register")
+    surname: str = Field(description="Surname of the user who wants to register")
+    company: str = Field(description="Company where the user who wants to register works")
+    email:   str = Field(description="Email of the user who wants to register")
+
     '''
     def execute_action(self):
         pass

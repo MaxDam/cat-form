@@ -14,27 +14,11 @@ the cat knows how to collect the data you need in a conversational way!
 ### 1) Prepare the pydantic model which extends CForm class
 ```python 
 class MyModel(CForm):
-    field1: str | None = None
-    field2: str | None = None
+    field1: str = Field(description="...", default="...")
+    field2: str = Field(description="...")
     #...
     
-	# Get Prompt Examples
-    def examples(self):
-        return [ 
-            {
-                "sentence":    "# sentence",
-                "json":        [# initial attributes],
-                "updatedJson": [# updated attributes]
-            },
-            {
-                "sentence":    "# sentence",
-                "json":        [# initial attributes],
-                "updatedJson": [# updated attributes]
-            }
-            #...
-        ]
-    
-    # Implement execute action overriding method
+	# Implement execute action overriding method
     def execute_action(self):
         # execute action
         return # action output

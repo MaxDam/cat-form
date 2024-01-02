@@ -2,52 +2,28 @@ from cat.mad_hatter.decorators import tool, hook
 from pydantic import field_validator, Field
 from cat.log import log
 from typing import Dict
-from .cform import CForm
+from .cform import CBaseModel
 import random
 
 
-class PizzaOrder(CForm):
-    pizza_type: str | None = None
-    address:    str | None = None
-    phone:      str | None = None
+class PizzaOrder(CBaseModel):
+    
+    pizza_type: str = Field(description="The type of pizza the user wants")
+    address:    str = Field(description="The user's address where they want the pizza to be delivered")
+    phone:      str = Field(description="The user's telephone number for any communications")
 
-    '''
-    pizza_type: str | None = Field(description="The type of pizza the user wants")
-    address:    str | None = Field(description="The user's address where they want the pizza to be delivered")
-    phone:      str | None = Field(description="The user's telephone number for any communications")
-    '''
-    
-    def examples(self):
-        return [
-            {
-                "sentence": "I want to order a pizza",
-                "json": [None, None, None],
-                "updatedJson": [None, None, None]
-            },
-            {
-                "sentence": "I live in Via Roma 1",
-                "json": ["Margherita", None, None],
-                "updatedJson": ["Margherita", "Via Roma 1", None]
-            }
-        ]
-    
+    '''@field_validator("pizza_type")
+    @classmethod
+    def validate_pizza_type(cls, pizza_type: str):
+        if pizza_type not in [None, ""] and pizza_type not in list(menu):
+            raise ValueError(f"{pizza_type} is not present in the menù")
+
+        return'''
+
     '''
     def execute_action(self):
         pass
     '''
-
-    @field_validator("pizza_type")
-    @classmethod
-    def validate_pizza_type(cls, pizza_type: str):
-        log.info("VALIDATIONS")
-
-        if pizza_type in [None, ""]:
-            return
-
-        pizza_types = list(menu)
-        if pizza_type not in pizza_types:
-            raise ValueError(f"{pizza_type} is not present in the menù")
-
 
 # Execute action (called when the form is completed and confirmed)
 @hook

@@ -13,12 +13,12 @@ the cat knows how to collect the data you need in a conversational way!
 
 ### 1) Prepare the pydantic model which extends CForm class
 ```python 
-class MyModel(CForm):
+class MyModel(CBaseModel):
     field1: str | None = None
     field2: str | None = None
     #...
     
-	# Get Prompt Examples
+    # Get Prompt Examples
     def examples(self):
         return [ 
             {

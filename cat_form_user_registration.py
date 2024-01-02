@@ -1,16 +1,17 @@
 from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
 from typing import Dict
-from .cform import CForm
 from pydantic import Field
+from .cform import CBaseModel
 
 
-class UserRegistration(CForm):
+class UserRegistration(CBaseModel):
+
     name:    str | None = None
     surname: str | None = None
     company: str | None = None
     email:   str | None = None
-
+    
     '''
     name:    str | None = Field(description="Name of the user who wants to register")
     surname: str | None = Field(description="Surname of the user who wants to register")

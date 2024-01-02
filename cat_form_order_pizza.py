@@ -2,21 +2,22 @@ from cat.mad_hatter.decorators import tool, hook
 from pydantic import field_validator, Field
 from cat.log import log
 from typing import Dict
-from .cform import CForm
+from .cform import CBaseModel
 import random
 
 
-class PizzaOrder(CForm):
+class PizzaOrder(CBaseModel):
+
     pizza_type: str | None = None
     address:    str | None = None
     phone:      str | None = None
-
+    
     '''
     pizza_type: str | None = Field(description="The type of pizza the user wants")
     address:    str | None = Field(description="The user's address where they want the pizza to be delivered")
     phone:      str | None = Field(description="The user's telephone number for any communications")
     '''
-    
+
     def examples(self):
         return [
             {

@@ -8,17 +8,20 @@ import random
 
 class PizzaOrder(CBaseModel):
     
-    pizza_type: str = Field(description="The type of pizza the user wants")
-    address:    str = Field(description="The user's address where they want the pizza to be delivered")
-    phone:      str = Field(description="The user's telephone number for any communications")
+    pizza_type: str = Field(description="The type of pizza")
+    address:    str = Field(description="The user's address")
+    phone:      str = Field(description="The user's telephone number")
 
-    '''@field_validator("pizza_type")
+    '''
+    @field_validator("pizza_type")
     @classmethod
     def validate_pizza_type(cls, pizza_type: str):
+        log.critical(f"Validating pizza type: {pizza_type}")
         if pizza_type not in [None, ""] and pizza_type not in list(menu):
             raise ValueError(f"{pizza_type} is not present in the menù")
 
-        return'''
+        return
+    '''
 
     '''
     def execute_action(self):

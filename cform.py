@@ -233,9 +233,9 @@ class CForm():
         if details is None:
             return False
         
-        # Remove empty values
+        # Clean json details
         print("details", details)
-        details = {key: value for key, value in details.items() if value not in [None, '', 'null', 'None']}
+        details = self._clean_json_details(details)
 
         # update form
         new_details = self.model.model_dump() | details
@@ -244,21 +244,23 @@ class CForm():
         if new_details == self.model.model_dump():
             return False
 
-        # Validate new_details (raises ValidationError exception on error)
+        # Validate new_details
         try:
             self.ask_for = []
             self.errors  = []
             self.model.model_validate(new_details)
             self.is_valid = True
         except ValidationError as e:
+            # Collect ask_for and errors
             for error_message in e.errors():
                 if error_message['type'] == 'missing':
                     self.ask_for.append(error_message['loc'][0])
                 else:
                     self.errors.append(error_message["msg"])
-                    raise e
-
-        print("ask_for", self.ask_for)
+                    
+        # If there are errors, raise an exception
+        if len(self.errors) > 0:
+            raise Exception("there are errors in the form")
 
         # Overrides the current model with the new_model
         self.model = self.model.model_construct(**new_details)
@@ -281,11 +283,22 @@ class CForm():
         ${gr.complete_json_suffix_v2}
         """
         
-        # Get json from guardrails
+        # Parse message
         guard = gd.Guard.from_pydantic(output_class=self.model_class, prompt=prompt)
-        gresult = guard(self.cat._llm, prompt_params={"message": user_message})
-        result = json.loads(gresult.raw_llm_output)
-        return result
+        gd_result = guard(self.cat._llm, prompt_params={"message": user_message})
+        print(f'gd_result: {gd_result}')
+
+        # If result is valid, return result
+        if gd_result.validation_passed is True:
+            result = json.loads(gd_result.raw_llm_output)
+            print(f'_extract_info: {user_message} -> {result}')
+            return result
+        
+        return {}
+
+    # Clean json details
+    def _clean_json_details(self, details):
+        return {key: value for key, value in details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
 
 
     ### EXECUTE DIALOGUE ###
@@ -312,18 +325,18 @@ class CForm():
             
             # (Cat's breath) Check if it's time to skip the conversation step
             if self._check_skip_conversation_step(): 
+                
+                # Skip dialog: enrich user message, set dialog as skipped and return None
                 log.critical(f'> SKIP CONVERSATION STEP {self.key}')
-
-                # Enrich user message with missing informations and return None
                 self.enrich_user_message()
-
-                # Set dialog as skipped and return None
                 self.dialog_is_skipped = True
                 return None
     
-        except ValidationError as e:
-            # If there was a validation problem, return the error message
-            message = e.errors()[0]["msg"]
+        except Exception as e:
+            log.warning(f"missing informations:{self.ask_for}, errors: {self.errors}")
+
+            # If there was a validation problem, return the first error message
+            message = self.errors[0]
             response = self.cat.llm(message)
             log.critical('> RETURN ERROR')
             return response
@@ -340,40 +353,28 @@ class CForm():
             response = self.ask_missing_information()
             log.critical(f'> ASK MISSING INFORMATIONS {self.key}')
             return response
-        
-        # If the form is completed and state == ASK_SUMMARY ..
-        if self.state in [CFormState.ASK_SUMMARY]:
-            
-            # Check confirm from user answer
-            if self.check_user_confirm():
 
-                # Execute action
+
+        # If ask_confirm is True, ask for confirmation
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+        if settings["ask_confirm"] is True:
+            # If the form is valid and state == ASK_SUMMARY and user has confirmed, execute action
+            if self.state in [CFormState.ASK_SUMMARY] and self.check_user_confirm():            
                 log.critical(f'> EXECUTE ACTION {self.key}')
                 return self.execute_action()
-        
-        # If the form is completed and state == ASK_INFORMATIONS ..
-        if self.state in [CFormState.ASK_INFORMATIONS]:
             
-            # Get settings
-            settings = self.cat.mad_hatter.get_plugin().load_settings()
-            
-            # If ask_confirm is true, show summary and ask confirmation
-            if settings["ask_confirm"] is True:
-                
-                # Show summary
+            # If the form is valid and state == ASK_INFORMATIONS, Show summary
+            if self.state in [CFormState.ASK_INFORMATIONS]:            
                 response = self.show_summary(self.cat)
-
-                # Change status in ASK_SUMMARY
                 self.state = CFormState.ASK_SUMMARY
-        
                 log.critical('> SHOW SUMMARY')
                 return response
-            
-            else: #else, execute action
-                log.critical(f'> EXECUTE ACTION {self.key}')
+        else: 
+            # If ask_confirm is False and the form is valid, execute action
+            if self.is_valid:
                 return self.execute_action()
 
-        # If the form is completed, ask for missing information
+        # If the form is valid, ask for change information
         self.state  = CFormState.ASK_INFORMATIONS
         response = self.ask_change_information()
         log.critical(f'> ASK CHANGE INFORMATIONS {self.key}')

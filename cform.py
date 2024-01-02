@@ -4,7 +4,6 @@ from pydantic import ValidationError, BaseModel
 from cat.looking_glass.stray_cat import StrayCat
 from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
 from enum import Enum
-import guardrails as gd
 
 
 # Conversational Form State
@@ -210,7 +209,6 @@ class CForm(BaseModel):
 
         # Extract new info
         user_response_json = self._extract_info()
-        #user_response_json = self._extract_info_with_guardrails()
         if user_response_json is None:
             return False
         
@@ -270,38 +268,6 @@ class CForm(BaseModel):
         attributes = list(self.get_model().keys())
         data_dict = dict(zip(attributes, values))
         return json.dumps(data_dict, indent=4)
-
-
-    #TODO IT DOES NOT WORK, need to check why
-    # Extracted new informations from the user's response (using guardrails library)
-    def _extract_info_with_guardrails(self):
-        
-        # Get user message
-        user_message = self._cat.working_memory["user_message_json"]["text"]
-        
-        # Prompt
-        prompt = """
-        Given the following client message, please extract information about his form.
-
-        ${message}
-
-        ${gr.complete_json_suffix_v2}
-        """
-        print(f'prompt: {prompt}')
-
-        # Get json from guardrails
-        guard = gd.Guard.from_pydantic(output_class=self.__class__, prompt=prompt)
-        result = guard(self._cat._llm, prompt_params={"message": user_message})
-        return result
-    
-        '''
-        # Print the validated output from the LLM
-        print(result)
-        print(json.dumps(result.validated_output, indent=2))
-
-        user_response_json = json.loads(result)
-        return user_response_json
-        '''
 
 
     ### EXECUTE DIALOGUE ###

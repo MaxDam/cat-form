@@ -18,27 +18,40 @@ from kor import create_extraction_chain, from_pydantic, Object, Text
 # Class Conversational Base Model
 class CBaseModel(BaseModel):
 
+    '''# Start conversation
+    # (typically inside the tool that starts the intent)
+    @classmethod
+    def start(cls, cat):
+        key = cls.__name__
+        if key not in cat.working_memory.keys():
+            cform = CForm(cls, key, cat)
+            cat.working_memory[key] = cform
+        cform = cat.working_memory[key]
+        cform.check_active_form()
+        response = cform.execute_dialogue()
+        return response'''
+    
     # Start conversation
     # (typically inside the tool that starts the intent)
     @classmethod
     def start(cls, cat):
         key = cls.__name__
         if key not in cat.working_memory.keys():
-            CForm = CForm(cls, key, cat)
-            cat.working_memory[key] = CForm
-        CForm = cat.working_memory[key]
-        CForm.check_active_form()
-        response = CForm.execute_dialogue()
-        return response
+            cform = CForm(cls, key, cat)
+            cat.working_memory[key] = cform
+            cform.check_active_form()
+            response = cform.execute_dialogue()
+            return response
+        return ""
 
-    '''# Stop conversation
+    # Stop conversation
     # (typically inside the tool that stops the intent)
     @classmethod
     def stop(cls, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
             del cat.working_memory[key]
-        return'''
+        return
 
     # Execute the dialogue step
     # (typically inside the agent_fast_reply hook)
@@ -46,8 +59,8 @@ class CBaseModel(BaseModel):
     def dialogue(cls, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
-            CForm = cat.working_memory[key]
-            response = CForm.execute_dialogue()
+            cform = cat.working_memory[key]
+            response = cform.execute_dialogue()
             if response:
                 return { "output": response }
         return
@@ -80,8 +93,6 @@ class CForm():
         self.key   = key
         self.cat   = cat
         
-        self.language = self.get_language()
-        
         # Get prompt, user message and chat history
         self.prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
 
@@ -89,160 +100,64 @@ class CForm():
         self.errors  = []
         self.ask_for = []
 
-        # Get embedder_size
-        self.embedder_size = len(self.cat.embedder.embed_query("hello world")) #1536
 
-        # Load examples
-        self.load_confirm_examples()
-        self.load_exit_intent_examples()
-    
-        # Test scan model methods
-        self.scan_model_methods()
-
-
-    ### ASK INFORMATIONS ###
-
-    # Queries the llm asking for the missing fields of the form, without memory chain
-    def ask_missing_informations(self) -> str:
-       
-        # Prompt
-        prompt = f"Imagine you have to fill out a registration form and some information is missing.\n\
-        Please ask to provide missing details.\n\
-        In the ask_for list you can find all validation errors due to missing information.\n\
-        Ask for one piece of information at a time.\n\
-        Be sure to maintain a friendly and professional tone when requesting this information.\n\
-        using {self.language} language.\n\n\
-        ### ask_for list: {self.ask_for}"
-        print(f'prompt: {prompt}')
-
-        response = self.cat.llm(prompt)
-        return response 
-
-
-    # Queries the lllm asking for the fields to be modified in the form, without a memory chain
-    def ask_change_informations(self) -> str:
-       
-        #Prompt
-        prompt = f"Your form contains all the necessary information, show the summary of the data\n\
-        present in the completed form and ask the user if he wants to change something.\n\
-        ### form data: {self.model.model_dump()}\n\
-        using the {self.language} language."
-        print(f'prompt: {prompt}')
-
-        response = self.cat.llm(prompt)
-        return response 
-    
-
-    # Notification error to user
-    def notification_error(self) -> str:
-        error_message = self.errors[0]
-        response = self.cat.llm(error_message)
-        return response
-
-
-    # Get language
-    def get_language(self):
-
+    # Enrich the user message with missing informations
+    def enrich_user_message(self):
+        
         # Get user message
         user_message = self.cat.working_memory["user_message_json"]["text"]
 
-        # Prompt
-        language_prompt = f"Identify the language of the following message \
-        and return only the language of the message, without other text.\n\
-        If you can't locate it, return 'English'.\n\
-        Message examples:\n\
-        'Ciao, come stai?', returns: 'Italian',\n\
-        'How do you go?', returns 'English',\n\
-        'Bonjour a tous', returns 'French'\n\n\
-        Message: '{user_message}'"
+        # Get class fields descriptions
+        class_descriptions = []
+        for key, value in self.model_class.model_fields.items():
+            class_descriptions.append(f"{key}: {value.description}")
         
-        # Queries the LLM and check if user is agree or not
-        response = self.cat.llm(language_prompt)
-        log.critical(f'Language: {response}')
-        return response
+        # Formatted texts
+        formatted_model_class = ", ".join(class_descriptions)
+        formatted_model = ", ".join([f"{key}: {value}" for key, value in self.model.model_dump().items()])
+        formatted_ask_for = ", ".join(self.ask_for)
+        formatted_errors = ", ".join(self.errors)
 
+        # Set prompt
+        if not self.is_valid:
 
-    ### SUMMARIZATION ###
+            prompt = \
+                f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have currently collected the following values:\n\
+                {formatted_model}\n\n"
 
-    # Show summary of the form to the user
-    def show_summary(self, cat):
-        
-        # Prompt
-        prompt = f"You have collected the following information from the user:\n\
-        ### form data: {self.model.model_dump()}\n\n\
-        Summarize the information contained in the form data.\n\
-        Next, ask the user to confirm whether the information collected is correct.\n\
-        Using {self.language} language."
-        print(f'prompt: {prompt}')
+            if len(self.errors) > 0:
+                prompt += \
+                    f"and in the validation you got the following errors:\n\
+                    {formatted_errors}\n\n"
 
-        # Queries the LLM
-        response = self.cat.llm(prompt)
-        return response
+            if len(self.ask_for) > 0:    
+                prompt += \
+                    f"and the following fields are still missing:\n\
+                    {formatted_ask_for}\n\n"
+                
+            prompt += \
+                f"ask the user to give you the necessary information.\n\n\
+                User message: {user_message}\n\
+                AI:"
 
+        else:
+            prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have collected all the available data:\n\
+                {formatted_model}\n\n\
+                show the user the data and ask them to confirm that it is correct.\n\n\
+                User message: {user_message}\n\
+                AI:"
 
-    # Load confirm examples
-    def load_confirm_examples(self):
-        
-        qclient = self.cat.memory.vectors.vector_db
-        self.confirm_collection = "user_confirm"
-        
-        # Create collection
-        qclient.recreate_collection(
-            collection_name=self.confirm_collection,
-            vectors_config=VectorParams(
-                size=self.embedder_size, 
-                distance=Distance.COSINE
-            )
-        )
+        # Print user message
+        print("*"*10)
+        print(prompt)
+        print("*"*10)
 
-        # Load context
-        examples = [ 
-            {"message": "yes, they are correct",   "label": "True" },
-            {"message": "ok, they are fine",       "label": "True" },
-            {"message": "they seem right",         "label": "True" },
-            {"message": "I think so",              "label": "True" },
-            {"message": "no, we are not there",    "label": "False"},
-            {"message": "wrong",                   "label": "False"},
-            {"message": "they are not correct",    "label": "False"},
-            {"message": "I don't think so",        "label": "False"}
-        ]
-
-        # Insert training data into index
-        points = []
-        for i, data in enumerate(examples):
-            message = data["message"]
-            label = data["label"]
-            vector = self.cat.embedder.embed_query(message)
-            points.append(PointStruct(id=i, vector=vector, payload={"label":label}))
-            
-        operation_info = qclient.upsert(
-            collection_name=self.confirm_collection,
-            wait=True,
-            points=points,
-        )
-        #print(operation_info)
-
-
-    # Check if user confirm the model data
-    def check_user_confirm(self) -> bool:
-        
-        # Get user message vector
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        user_message_vector = self.cat.embedder.embed_query(user_message)
-        
-        # Search for the vector most similar to the user message in the vector database
-        qclient = self.cat.memory.vectors.vector_db
-        search_results = qclient.search(
-            self.confirm_collection, 
-            user_message_vector, 
-            with_payload=True, 
-            limit=1
-        )
-        print(f"search_results: {search_results}")
-        most_similar_label = search_results[0].payload["label"]
-        
-        # If the nearest distance is less than the threshold, exit intent
-        return most_similar_label == "True"
+        # Set user_message with the new user_message
+        self.cat.working_memory["user_message_json"]["text"] = prompt
 
 
     ### UPDATE JSON ###
@@ -252,8 +167,8 @@ class CForm():
     def update(self):
 
         # Extract new info
-        details = self._extract_info_by_kor()
-        #details = self._extract_info_by_guardrails()
+        #details = self._extract_info_by_kor()
+        details = self._extract_info_by_guardrails()
         if details is None:
             return False
         
@@ -287,7 +202,7 @@ class CForm():
                     
         # If there are errors, raise an exception
         if len(self.errors) > 0:
-            raise Exception(f"there are errors in the form: {self.errors}")
+            return False
 
         # Overrides the current model with the new_model
         self.model = self.model.model_construct(**new_details)
@@ -360,13 +275,13 @@ class CForm():
 
     # Check that there is only one active form
     def check_active_form(self):
-        if "_active_CForms" not in self.cat.working_memory.keys():
-            self.cat.working_memory["_active_CForms"] = []
-        if self.key not in self.cat.working_memory["_active_CForms"]:
-            self.cat.working_memory["_active_CForms"].append(self.key)
-        for key in self.cat.working_memory["_active_CForms"]:
+        if "_active_cforms" not in self.cat.working_memory.keys():
+            self.cat.working_memory["_active_cforms"] = []
+        if self.key not in self.cat.working_memory["_active_cforms"]:
+            self.cat.working_memory["_active_cforms"].append(self.key)
+        for key in self.cat.working_memory["_active_cforms"]:
             if key != self.key:
-                self.cat.working_memory["_active_CForms"].remove(key)
+                self.cat.working_memory["_active_cforms"].remove(key)
                 if key in self.cat.working_memory.keys():
                     del self.cat.working_memory[key]
 
@@ -374,201 +289,15 @@ class CForm():
     # Execute the dialogue step
     def execute_dialogue(self):
         
-        '''# If there are other tools to invoke skip the dialogue step
-        if len(self.allowed_tools()) > 0:
-            log.critical(f'> SKIP DIALOG {self.key}')
-            return None'''
+        self.cat.working_memory["episodic_memories"] = []
+
+        # If the form is valid, execute action
+        if self.is_valid:            
+            return self.model.execute_action()
         
-        # Check if the user want to exit the intent
-        if self.state not in [CFormState.START] and self.check_exit_intent():
-            log.critical(f'> Exit Intent {self.key}')
-            del self.cat.working_memory[self.key]
-            return None
+        # update model from user response
+        self.update()
 
-        # If the form is valid and state == ASK_SUMMARY and user has confirmed, execute action
-        if self.is_valid and self.state in [CFormState.ASK_SUMMARY] and self.check_user_confirm():            
-            log.critical(f'> EXECUTE ACTION {self.key}')
-            return self.execute_action()
-        
-        try:
-            # update model from user response
-            model_is_updated = self.update()
-            
-        except Exception as e:
-            # If there was a validation problem, return error
-            log.critical(f'> RETURN ERROR {e}')
-            return self.notification_error()
-
-        log.warning(f"state:{self.state}, is valid:{self.is_valid}")
-        log.warning(f"missing informations:{self.ask_for}, errors: {self.errors}")
-
-        # If the form is not valid, ask for missing information
-        if not self.is_valid:
-            self.state  = CFormState.ASK_INFORMATIONS
-            response = self.ask_missing_informations()
-            log.critical(f'> ASK MISSING INFORMATIONS {self.key}')
-            return response
-
-        # If ask_confirm is False, execute action directly
-        settings = self.cat.mad_hatter.get_plugin().load_settings()
-        if settings["ask_confirm"] is False:
-            return self.execute_action()
-            
-        # If state == ASK_INFORMATIONS, Show summary
-        if self.state in [CFormState.ASK_INFORMATIONS]:            
-            response = self.show_summary(self.cat)
-            self.state = CFormState.ASK_SUMMARY
-            log.critical('> SHOW SUMMARY')
-            return response
-        
-        # Else: ask for change information
-        self.state  = CFormState.ASK_INFORMATIONS
-        response = self.ask_change_informations()
-        log.critical(f'> ASK CHANGE INFORMATIONS {self.key}')
-        return response
-
-
-    ### OTHER METHODS ###
-
-    # Get prompt template from examples context
-    def get_prompt_template(self, examples):
-
-        # Create example selector
-        example_selector = SemanticSimilarityExampleSelector.from_examples(
-            examples, self.cat.embedder, Qdrant, k=1, location=':memory:'
-        )
-
-        # Create example prompt
-        example_prompt = PromptTemplate(
-            input_variables=["question", "answer"], 
-            template="Question: {question}\n{answer}"
-        )
-
-        # Create promptTemplate from examples_selector and example_prompt
-        prompt_template = FewShotPromptTemplate(
-            example_selector=example_selector, 
-            example_prompt=example_prompt,
-            suffix="Question: {input}", 
-            input_variables=["input"]
-        )
-
-        return prompt_template
-
-
-    # Get allowed tools
-    def allowed_tools(self):
-        # filter only allowed tools in procedural memory
-        recalled_tools = self.cat.working_memory["procedural_memories"]
-        tool_names = [t[0].metadata["name"] for t in recalled_tools]
-        log.critical(f"tools chiamati: {len(tool_names)}")
-        allowed_tool_names = self.model.allowed_tools(tool_names)
-        filtered_tool_names = [t for t in tool_names if t in allowed_tool_names]
-        log.critical(f"tools permessi: {len(filtered_tool_names)}")
-        allowed_tools = [i for i in self.cat.mad_hatter.tools if i.name in filtered_tool_names]
-        #self.cat.working_memory["procedural_memories"] = allowed_tools
-        return allowed_tools
-
-
-    # Execute action
-    def execute_action(self):
-        
-        # Delete CForm from working memory
-        del self.cat.working_memory[self.key]
-
-        # Look for methods annotated with @hook called execute_action and with parameter model equal to the curren class
-        for hook in self.cat.mad_hatter.hooks["execute_action"]:
-            func = hook.function
-            if hasattr(func, "__annotations__")\
-            and len(func.__annotations__) > 0\
-            and list(func.__annotations__.values())[0].__name__ == self.model_class.__name__:
-                
-                # Execute function action
-                return func(self.model)
-
-        # If not found hook -> call method execute_action in the model..
-        return self.model.execute_action()
-    
-    
-    # Load exit intent examples
-    def load_exit_intent_examples(self):
-        
-        qclient = self.cat.memory.vectors.vector_db
-        self.exit_intent_collection = "exit_intent"
-        
-        # Create collection
-        qclient.recreate_collection(
-            collection_name=self.exit_intent_collection,
-            vectors_config=VectorParams(
-                size=self.embedder_size, 
-                distance=Distance.COSINE
-            )
-        )
-        
-        # Load context
-        examples = [ 
-            {"message": "I would like to exit the module"                   },
-            {"message": "I no longer want to continue filling out the form" },
-            {"message": "You go out"                                        },
-            {"message": "Return to normal conversation"                     },
-            {"message": "Stop and go out"                                   }
-        ]
-
-        # Insert training data into index
-        points = []
-        for i, data in enumerate(examples):
-            message = data["message"]
-            vector = self.cat.embedder.embed_query(message)
-            points.append(PointStruct(id=i, vector=vector, payload={}))
-            
-        operation_info = qclient.upsert(
-            collection_name=self.exit_intent_collection,
-            wait=True,
-            points=points,
-        )
-        #print(operation_info)
-
-
-    # Check if the user wants to exit the intent
-    def check_exit_intent(self) -> bool:
-        
-        # Get user message vector
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        user_message_vector = self.cat.embedder.embed_query(user_message)
-        
-        # Search for the vector most similar to the user message in the vector database and get distance
-        qclient = self.cat.memory.vectors.vector_db
-        search_results = qclient.search(
-            self.exit_intent_collection, 
-            user_message_vector, 
-            with_payload=False, 
-            limit=1
-        )
-        print(f"search_results: {search_results}")
-        nearest_score = search_results[0].score
-        
-        # If the nearest score is less than the threshold, exit intent
-        threshold = 0.9
-        return nearest_score >= threshold
-
-
-    def scan_model_methods(self):
-        # Cycle through all methods of the object model
-        for method_name in dir(self.model):
-            # Check if method name starts with "lookup_"
-            if method_name.startswith('lookup_'):
-                # Get the method
-                method = getattr(self.model, method_name)
-                
-                # Get the method docstring
-                docstring = method.__doc__
-                
-                # Print result
-                print("-" * 30)
-                print(f"Method name: {method_name}")
-                print(f"Docstring: {docstring}")
-                print("-" * 30)
-
-                # Convert docstring to examples json array
-                lines = [line.strip() for line in docstring.strip().split('\n') if line.strip()]
-                examples = [{"message": line} for line in lines]
-                print(f"examples: {examples}")
+        # Enrich prompt with missing informations
+        self.enrich_user_message()
+        return None

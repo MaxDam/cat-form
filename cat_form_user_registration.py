@@ -17,19 +17,19 @@ class UserRegistration(CBaseModel):
         result += "<table border=0>"
         result += "<tr>"
         result += "   <td>Name</td>"
-        result += f"  <td>{self.model.name}</td>"
+        result += f"  <td>{self.name}</td>"
         result += "</tr>"
         result += "<tr>"
         result += "   <td>Surname</td>"
-        result += f"  <td>{self.model.surname}</td>"
+        result += f"  <td>{self.surname}</td>"
         result += "</tr>"
         result += "<tr>"
         result += "   <td>Company</td>"
-        result += f"  <td>{self.model.company}</td>"
+        result += f"  <td>{self.company}</td>"
         result += "</tr>"
         result += "<tr>"
         result += "   <td>Email</td>"
-        result += f"  <td>{self.model.email}</td>"
+        result += f"  <td>{self.email}</td>"
         result += "</tr>"
         result += "</table>"
         return result
@@ -49,15 +49,20 @@ def start_register_intent(input, cat):
     return UserRegistration.start(cat)
 
 
-'''# Stop intent
+# Stop intent
 @tool
 def stop_register_intent(input, cat):
     """I don't want to continue this user registration"""
     log.critical("INTENT USER REGISTRATION STOP")
-    return UserRegistration.stop(cat)'''
+    return UserRegistration.stop(cat)
 
 
 # Order pizza handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     return UserRegistration.dialogue(cat)
+
+'''@hook
+def before_cat_sends_message(message, cat):
+    message["why"]["memory"]["episodic"]=[]
+    return message'''

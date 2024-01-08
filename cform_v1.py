@@ -15,11 +15,11 @@ class CBaseModel(BaseModel):
     def start(cls, cat):
         key = cls.__name__
         if key not in cat.working_memory.keys():
-            CForm = CForm(cls, key, cat)
-            cat.working_memory[key] = CForm
-        CForm = cat.working_memory[key]
-        CForm.check_active_form()
-        response = CForm.execute_dialogue()
+            cform = CForm(cls, key, cat)
+            cat.working_memory[key] = cform
+        cform = cat.working_memory[key]
+        cform.check_active_form()
+        response = cform.execute_dialogue()
         return response
 
 
@@ -39,8 +39,8 @@ class CBaseModel(BaseModel):
     def dialogue(cls, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
-            CForm = cat.working_memory[key]
-            response = CForm.execute_dialogue()
+            cform = cat.working_memory[key]
+            response = cform.execute_dialogue()
             if response:
                 return { "output": response }
         return
@@ -305,13 +305,13 @@ class CForm():
 
     # Check that there is only one active form
     def check_active_form(self):
-        if "_active_CForms" not in self.cat.working_memory.keys():
-            self.cat.working_memory["_active_CForms"] = []
-        if self.key not in self.cat.working_memory["_active_CForms"]:
-            self.cat.working_memory["_active_CForms"].append(self.key)
-        for key in self.cat.working_memory["_active_CForms"]:
+        if "_active_cforms" not in self.cat.working_memory.keys():
+            self.cat.working_memory["_active_cforms"] = []
+        if self.key not in self.cat.working_memory["_active_cforms"]:
+            self.cat.working_memory["_active_cforms"].append(self.key)
+        for key in self.cat.working_memory["_active_cforms"]:
             if key != self.key:
-                self.cat.working_memory["_active_CForms"].remove(key)
+                self.cat.working_memory["_active_cforms"].remove(key)
                 if key in self.cat.working_memory.keys():
                     del self.cat.working_memory[key]
 
@@ -407,7 +407,7 @@ class CForm():
     # Execute action
     def execute_action(self):
         
-        # Delete CForm from working memory
+        # Delete cform from working memory
         del self.cat.working_memory[self.key]
 
         # Look for methods annotated with @hook called execute_action and with parameter model equal to the curren class

@@ -49,15 +49,15 @@ class PizzaOrder(CBaseModel):
         result += "<table border=0>"
         result += "<tr>"
         result += "   <td>Pizza Type</td>"
-        result += f"  <td>{self.model.pizza_type}</td>"
+        result += f"  <td>{self.pizza_type}</td>"
         result += "</tr>"
         result += "<tr>"
         result += "   <td>Address</td>"
-        result += f"  <td>{self.model.address}</td>"
+        result += f"  <td>{self.address}</td>"
         result += "</tr>"
         result += "<tr>"
         result += "   <td>Phone Number</td>"
-        result += f"  <td>{self.model.phone}</td>"
+        result += f"  <td>{self.phone}</td>"
         result += "</tr>"
         result += "</table>"
         result += "<br>"                                                                                                     
@@ -91,14 +91,14 @@ def start_order_pizza_intent(input, cat):
     return PizzaOrder.start(cat)
 
  
-'''# Order pizza stop intent
+# Order pizza stop intent
 @tool
 def stop_order_pizza_intent(input, cat):
     """I don't want to order pizza anymore, 
     I want to give up on the order, 
     go back to normal conversation"""
     log.critical("INTENT ORDER PIZZA STOP")
-    return PizzaOrder.stop(cat)'''
+    return PizzaOrder.stop(cat)
 
 
 # Order pizza handle conversation
@@ -128,3 +128,8 @@ def ask_menu(input, cat):
     for pizza in menu:
         response += f"\n - {pizza}"
     return response
+
+'''@hook
+def before_cat_sends_message(message, cat):
+    message["why"]["memory"]["episodic"]=[]
+    return message'''

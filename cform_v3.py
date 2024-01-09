@@ -25,9 +25,9 @@ class CBaseModel(BaseModel):
         if key not in cat.working_memory.keys():
             cform = CForm(cls, key, cat)
             cat.working_memory[key] = cform
-            #cform.check_active_form()
-            #response = cform.dialogue_action()
-            #return response
+            cform.check_active_form()
+            response = cform.dialogue_action()
+            return response
         cform = cat.working_memory[key]
         cform.check_active_form()
         #response = cform.dialogue_direct()
@@ -137,15 +137,22 @@ class CForm():
         just respond with 'YES' or 'NO' depending on whether the sentence is:\n\
         - a refusal either has a negative meaning or is an intention to cancel the form (NO)\n\
         - an acceptance has a positive or neutral meaning (YES).\n\
-        If you are unsure, answer 'NO'.\n\
+        If you are unsure, answer 'NO'.\n\n\
         The sentence is as follows:\n\
-        ### user message: {user_message}"
+        User message: {user_message}"
         
+        # Print confirm prompt
+        print("*"*10)
+        print("CONFIRM PROMPT:")
+        print(confirm_prompt)
+        print("*"*10)
+
         # Queries the LLM and check if user is agree or not
         response = self.cat.llm(confirm_prompt)
         log.critical(f'check_user_confirm: {response}')
         confirm = "NO" not in response and "YES" in response
         
+        print("RESPONSE: " + str(confirm))
         return confirm
     
 
@@ -358,36 +365,44 @@ class CForm():
     
     # Execute the dialogue step
     def dialogue_action(self):
-        
+        log.critical("dialogue_action")
+        log.warning(f" state: {self.state}, valid: {self.is_valid}")
+
         #self.cat.working_memory["episodic_memories"] = []
 
         # If the form is valid and ask_confirm is False, execute action directly
         settings = self.cat.mad_hatter.get_plugin().load_settings()
         if self.is_valid and settings["ask_confirm"] is False:
+            log.warning("> EXECUTE ACTION")
             del self.cat.working_memory[self.key]   
             return self.model.execute_action()
         
         # Check user confirm
         if self.is_valid and self.state == CFormState.ASK_SUMMARY:
             if self.check_user_confirm():
+                log.warning("> EXECUTE ACTION")
                 del self.cat.working_memory[self.key]   
                 return self.model.execute_action()
             else:
+                log.warning("> STATE=ASK_INFORMATIONS")
                 self.state = CFormState.ASK_INFORMATIONS
                 
         # Switch in user ask confirm
         if self.is_valid and self.state == CFormState.ASK_INFORMATIONS:
             self.state = CFormState.ASK_SUMMARY
-            log.critical("STATE=ASK_INFORMATIONS")
-        
+            log.warning("> STATE=ASK_SUMMARY")
+            return None
+
         # update model from user response
         self.update()
+        log.warning("> UPDATE")
         return None
     
 
     # execute dialog prompt prefix
     def dialogue_prefix(self, prompt_prefix):
-        
+        log.critical("dialogue_prefix")
+
         # Get class fields descriptions
         class_descriptions = []
         for key, value in self.model_class.model_fields.items():
@@ -395,13 +410,12 @@ class CForm():
         
         # Formatted texts
         formatted_model_class = ", ".join(class_descriptions)
-        formatted_model = ", ".join([f"{key}: {value}" for key, value in self.model.model_dump().items()])
-        formatted_ask_for = ", ".join(self.ask_for)
-        formatted_errors = ", ".join(self.errors)
+        formatted_model       = ", ".join([f"{key}: {value}" for key, value in self.model.model_dump().items()])
+        formatted_ask_for     = ", ".join(self.ask_for)
+        formatted_errors      = ", ".join(self.errors)
 
         # Set prompt
         if not self.is_valid:
-
             prompt = \
                 f"Your goal is to have the user fill out a form containing the following fields:\n\
                 {formatted_model_class}\n\n\
@@ -420,7 +434,6 @@ class CForm():
                 
             prompt += \
                 f"ask the user to give you the necessary information."
-
         else:
             prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
                 {formatted_model_class}\n\n\
@@ -430,6 +443,7 @@ class CForm():
 
         # Print prompt prefix
         print("*"*10)
+        print("PROMPT PREFIX:")
         print(prompt)
         print("*"*10)
 
@@ -474,7 +488,7 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            cform.model.dialogue_action(fast_reply, cat)
+            return cform.model.dialogue_action(fast_reply, cat)
     return fast_reply
 
 @hook
@@ -483,5 +497,5 @@ def agent_prompt_prefix(prefix, cat) -> str:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            cform.model.dialogue_prefix(prefix, cat)
+            return cform.model.dialogue_prefix(prefix, cat)
     return prefix

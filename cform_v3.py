@@ -1,6 +1,6 @@
 from pydantic import ValidationError, BaseModel
 from cat.mad_hatter.decorators import hook
-from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
+from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX, MAIN_PROMPT_SUFFIX
 from cat.log import log
 from typing import Dict
 from enum import Enum
@@ -26,11 +26,12 @@ class CBaseModel(BaseModel):
             cform = CForm(cls, key, cat)
             cat.working_memory[key] = cform
             #cform.check_active_form()
-            #response = cform.execute_dialogue_action()
+            #response = cform.dialogue_action()
             #return response
         cform = cat.working_memory[key]
         cform.check_active_form()
-        response = cform.dialogue_direct()
+        #response = cform.dialogue_direct()
+        response = cform.execute_memory_chain()
         return response
 
     # Stop conversation
@@ -439,16 +440,28 @@ class CForm():
 
     # execute dialog direct (combines the previous two methods)
     def dialogue_direct(self):
-        response = self.execute_dialogue_action()
+        response = self.dialogue_action()
         if not response:
             user_message = self.cat.working_memory["user_message_json"]["text"]
             prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
-            prompt_prefix = self.execute_dialogue_prefix(prompt_prefix)
+            prompt_prefix = self.dialogue_prefix(prompt_prefix)
             prompt = f"{prompt_prefix}\n\n\
                 User message: {user_message}\n\
                 AI:"
             response = self.cat.llm(prompt)
         return response
+    
+
+    # Execute memory chain
+    def execute_memory_chain(self):
+        agent_input   = self.cat.agent_manager.format_agent_input(self.cat.working_memory)
+        agent_input   = self.cat.mad_hatter.execute_hook("before_agent_starts", agent_input, cat=self.cat)
+        agent_input["tools_output"] = ""
+        prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
+        prompt_prefix = self.dialogue_prefix(prompt_prefix)
+        prompt_suffix = self.cat.mad_hatter.execute_hook("agent_prompt_suffix", MAIN_PROMPT_SUFFIX, cat=self.cat)
+        response = self.cat.agent_manager.execute_memory_chain(agent_input, prompt_prefix, prompt_suffix, self.cat)
+        return response.get("output")
 
 
 ############################################################
@@ -461,7 +474,7 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            cform.dialogue_action(fast_reply, cat)
+            cform.model.dialogue_action(fast_reply, cat)
     return fast_reply
 
 @hook
@@ -470,5 +483,5 @@ def agent_prompt_prefix(prefix, cat) -> str:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            cform.dialogue_prefix(prefix, cat)
+            cform.model.dialogue_prefix(prefix, cat)
     return prefix

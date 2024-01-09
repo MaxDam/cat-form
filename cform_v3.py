@@ -451,16 +451,24 @@ class CForm():
         return response
 
 
-# Hooks for handle conversation
+############################################################
+######### HOOKS FOR AUTOMATIC HANDLE CONVERSATION ##########
+############################################################
 
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    cform = CForm.get_active_form(cat)
-    if cform:
-        cform.dialogue_action(fast_reply, cat)
+    settings = cat.mad_hatter.get_plugin().load_settings()
+    if settings["auto_handle_conversation"] is True:
+        cform = CForm.get_active_form(cat)
+        if cform:
+            cform.dialogue_action(fast_reply, cat)
+    return fast_reply
 
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:
-    cform = CForm.get_active_form(cat)
-    if cform:
-        cform.dialogue_prefix(prefix, cat)
+    settings = cat.mad_hatter.get_plugin().load_settings()
+    if settings["auto_handle_conversation"] is True:
+        cform = CForm.get_active_form(cat)
+        if cform:
+            cform.dialogue_prefix(prefix, cat)
+    return prefix

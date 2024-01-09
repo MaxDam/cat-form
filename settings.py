@@ -6,6 +6,10 @@ class MySettings(BaseModel):
         title="ask confirm",
         default=True
     )
+    auto_handle_conversation: bool = Field(
+        title="auto handle conversation",
+        default=True
+    )
 
 @plugin
 def settings_schema():

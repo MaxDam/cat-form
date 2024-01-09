@@ -41,6 +41,7 @@ def intent_stop(input, cat):
 ```
 
 ### 4) Implement agent_fast_reply & agent_prompt_prefix for dialog exchange
+### (not necessary if the auto handle conversation setting is true)
 ```python 
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:

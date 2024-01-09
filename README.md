@@ -24,15 +24,7 @@ class MyModel(CForm):
         return # action output
 ```
 
-### 2) Implement execute action annotation method
-```python 
-@hook
-def execute_action(model: MyModel):
-    # execute action
-    return # action output
-```
-
-### 3) Implement tool intent start
+### 2) Implement tool intent start
 ```python 
 @tool(return_direct=True)
 def intent_start(model, cat):
@@ -40,7 +32,7 @@ def intent_start(model, cat):
     return MyModel.start(cat)
 ```
 
-### 4) Implement tool intent stop
+### 3) Implement tool intent stop
 ```python 
 @tool
 def intent_stop(model, cat):
@@ -48,9 +40,13 @@ def intent_stop(model, cat):
     return MyModel.stop(cat)
 ```
 
-### 5) Implement agent_fast_reply for dialog exchange
+### 4) Implement agent_fast_reply & agent_prompt_prefix for dialog exchange
 ```python 
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return MyModel.dialogue(cat)
+    return MyModel.dialogue_action(cat)
+
+@hook
+def agent_prompt_prefix(prefix, cat) -> str:
+    return MyModel.dialogue_prefix(prefix, cat)
 ```

@@ -57,12 +57,11 @@ def stop_register_intent(input, cat):
     return UserRegistration.stop(cat)
 
 
-# Order pizza handle conversation
+# User registration handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return UserRegistration.dialogue(cat)
+    return UserRegistration.dialogue_action(cat)
 
-'''@hook
-def before_cat_sends_message(message, cat):
-    message["why"]["memory"]["episodic"]=[]
-    return message'''
+@hook
+def agent_prompt_prefix(prefix, cat) -> str:
+    return UserRegistration.dialogue_prefix(prefix, cat)

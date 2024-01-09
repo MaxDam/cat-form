@@ -60,7 +60,7 @@ def stop_register_intent(input, cat):
 # User registration handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return UserRegistration.dialogue_action(cat)
+    return UserRegistration.dialogue_action(fast_reply, cat)
 
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:

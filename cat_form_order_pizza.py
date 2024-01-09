@@ -104,7 +104,7 @@ def stop_order_pizza_intent(input, cat):
 # Order pizza handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return PizzaOrder.dialogue_action(cat)
+    return PizzaOrder.dialogue_action(fast_reply, cat)
 
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:
@@ -132,8 +132,3 @@ def ask_menu(input, cat):
     for pizza in menu:
         response += f"\n - {pizza}"
     return response
-
-'''@hook
-def before_cat_sends_message(message, cat):
-    message["why"]["memory"]["episodic"]=[]
-    return message'''

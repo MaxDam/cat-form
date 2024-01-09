@@ -27,7 +27,7 @@ class MyModel(CForm):
 ### 2) Implement tool intent start
 ```python 
 @tool(return_direct=True)
-def intent_start(model, cat):
+def intent_start(input, cat):
     ''' <docString> '''
     return MyModel.start(cat)
 ```
@@ -35,7 +35,7 @@ def intent_start(model, cat):
 ### 3) Implement tool intent stop
 ```python 
 @tool
-def intent_stop(model, cat):
+def intent_stop(input, cat):
     ''' <docString> '''
     return MyModel.stop(cat)
 ```
@@ -44,7 +44,7 @@ def intent_stop(model, cat):
 ```python 
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return MyModel.dialogue_action(cat)
+    return MyModel.dialogue_action(fast_reply, cat)
 
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:

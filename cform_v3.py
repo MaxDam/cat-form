@@ -41,7 +41,7 @@ class CBaseModel(BaseModel):
     # Execute the dialogue step
     # (typically inside the agent_fast_reply hook)
     @classmethod
-    def dialogue_action(cls, cat):
+    def dialogue_action(cls, fast_reply, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
@@ -53,12 +53,12 @@ class CBaseModel(BaseModel):
     # Execute the dialogue step
     # (typically inside the agent_prompt_prefix hook)
     @classmethod
-    def dialogue_prefix(cls, prompt_prefix, cat):
+    def dialogue_prefix(cls, prefix, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
-            return cform.execute_dialogue_prefix(prompt_prefix)
-        return prompt_prefix
+            return cform.execute_dialogue_prefix(prefix)
+        return prefix
 
 
     # METHODS TO OVERRIDE

@@ -11,9 +11,9 @@ the cat knows how to collect the data you need in a conversational way!
 
 ## Usage
 
-### 1) Prepare the pydantic model which extends CForm class
+### 1) Prepare the pydantic model which extends CBaseModel class
 ```python 
-class MyModel(CForm):
+class MyModel(CBaseModel):
     field1: str = Field(description="...", default="...")
     field2: str = Field(description="...")
     #...

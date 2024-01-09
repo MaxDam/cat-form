@@ -50,7 +50,7 @@ def stop_register_intent(input, cat):
     log.critical("INTENT USER REGISTRATION STOP")
     return UserRegistration.stop(cat)
 
-
+'''
 # User registration handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
@@ -59,3 +59,4 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:
     return UserRegistration.dialogue_prefix(prefix, cat)
+'''

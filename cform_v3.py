@@ -1,6 +1,8 @@
 from pydantic import ValidationError, BaseModel
+from cat.mad_hatter.decorators import hook
 from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
 from cat.log import log
+from typing import Dict
 from enum import Enum
 import json
 
@@ -92,6 +94,10 @@ class CForm():
         #self.load_confirm_examples_rag()
 
 
+    ####################################
+    ######## HANDLE ACTIVE FORM ########
+    ####################################
+
     # Check that there is only one active form
     def check_active_form(self):
         if "_active_cforms" not in self.cat.working_memory.keys():
@@ -103,6 +109,16 @@ class CForm():
                 self.cat.working_memory["_active_cforms"].remove(key)
                 if key in self.cat.working_memory.keys():
                     del self.cat.working_memory[key]
+
+    # Class method get active form
+    @classmethod
+    def get_active_form(cls, cat):
+        if "_active_cforms" in cat.working_memory.keys():
+            key = cat.working_memory["_active_cforms"][0]
+            if key in cat.working_memory.keys():
+                cform = cat.working_memory[key]
+                return cform
+        return None
 
 
     ####################################
@@ -433,3 +449,18 @@ class CForm():
                 AI:"
             response = self.cat.llm(prompt)
         return response
+
+
+# Hooks for handle conversation
+
+@hook
+def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
+    cform = CForm.get_active_form(cat)
+    if cform:
+        cform.dialogue_action(fast_reply, cat)
+
+@hook
+def agent_prompt_prefix(prefix, cat) -> str:
+    cform = CForm.get_active_form(cat)
+    if cform:
+        cform.dialogue_prefix(prefix, cat)

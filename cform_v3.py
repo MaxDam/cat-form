@@ -1,16 +1,15 @@
-import json
-from cat.log import log
 from pydantic import ValidationError, BaseModel
 from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
+from cat.log import log
 from enum import Enum
-from typing import List
-from langchain.prompts.prompt import PromptTemplate
+import json
+
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
+
+from langchain.prompts.prompt import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
-import guardrails as gd
-from kor import create_extraction_chain, from_pydantic, Object, Text
-# https://github.com/eyurtsev/kor
-# https://www.guardrailsai.com/docs/guardrails_ai/getting_started
+import guardrails as gd #https://www.guardrailsai.com/docs/guardrails_ai/getting_started
+from kor import create_extraction_chain, from_pydantic #https://github.com/eyurtsev/kor
 
 
 # Class Conversational Base Model
@@ -24,10 +23,13 @@ class CBaseModel(BaseModel):
         if key not in cat.working_memory.keys():
             cform = CForm(cls, key, cat)
             cat.working_memory[key] = cform
-            cform.check_active_form()
-            response = cform.execute_dialogue_action()
-            return response
-        return cform.execute_dialogue_direct()
+            #cform.check_active_form()
+            #response = cform.execute_dialogue_action()
+            #return response
+        cform = cat.working_memory[key]
+        cform.check_active_form()
+        response = cform.dialogue_direct()
+        return response
 
     # Stop conversation
     # (typically inside the tool that stops the intent)
@@ -45,7 +47,7 @@ class CBaseModel(BaseModel):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
-            response = cform.execute_dialogue_action()
+            response = cform.dialogue_action()
             if response:
                 return { "output": response }
         return
@@ -57,15 +59,14 @@ class CBaseModel(BaseModel):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
-            return cform.execute_dialogue_prefix(prefix)
+            return cform.dialogue_prefix(prefix)
         return prefix
-
 
     # METHODS TO OVERRIDE
     
     # Execute final form action
     def execute_action(self):
-        return self
+        return self.model_dump_json(indent=4)
     
 
 # Conversational Form State
@@ -91,7 +92,22 @@ class CForm():
         #self.load_confirm_examples_rag()
 
 
-    ### CHECK USER CONFIRM ###
+    # Check that there is only one active form
+    def check_active_form(self):
+        if "_active_cforms" not in self.cat.working_memory.keys():
+            self.cat.working_memory["_active_cforms"] = []
+        if self.key not in self.cat.working_memory["_active_cforms"]:
+            self.cat.working_memory["_active_cforms"].append(self.key)
+        for key in self.cat.working_memory["_active_cforms"]:
+            if key != self.key:
+                self.cat.working_memory["_active_cforms"].remove(key)
+                if key in self.cat.working_memory.keys():
+                    del self.cat.working_memory[key]
+
+
+    ####################################
+    ######## CHECK USER CONFIRM ########
+    ####################################
         
     # Check user confirm the form data
     def check_user_confirm(self) -> bool:
@@ -115,6 +131,7 @@ class CForm():
         
         return confirm
     
+
     # Load confirm examples RAG
     def load_confirm_examples_rag(self):
         
@@ -183,7 +200,9 @@ class CForm():
         return most_similar_label == "True"
     
 
-    ### UPDATE JSON ###
+    ####################################
+    ############ UPDATE JSON ###########
+    ####################################
 
     # Updates the form with the information extracted from the user's response
     # (Return True if the model is updated)
@@ -316,23 +335,12 @@ class CForm():
         return {key: value for key, value in details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
 
 
-    ### EXECUTE DIALOGUE ###
-
-    # Check that there is only one active form
-    def check_active_form(self):
-        if "_active_cforms" not in self.cat.working_memory.keys():
-            self.cat.working_memory["_active_cforms"] = []
-        if self.key not in self.cat.working_memory["_active_cforms"]:
-            self.cat.working_memory["_active_cforms"].append(self.key)
-        for key in self.cat.working_memory["_active_cforms"]:
-            if key != self.key:
-                self.cat.working_memory["_active_cforms"].remove(key)
-                if key in self.cat.working_memory.keys():
-                    del self.cat.working_memory[key]
-
-
+    ####################################
+    ######### EXECUTE DIALOGUE #########
+    ####################################
+    
     # Execute the dialogue step
-    def execute_dialogue_action(self):
+    def dialogue_action(self):
         
         #self.cat.working_memory["episodic_memories"] = []
 
@@ -361,7 +369,7 @@ class CForm():
     
 
     # execute dialog prompt prefix
-    def execute_dialogue_prefix(self, prompt_prefix):
+    def dialogue_prefix(self, prompt_prefix):
         
         # Get class fields descriptions
         class_descriptions = []
@@ -413,7 +421,8 @@ class CForm():
         return prompt
 
 
-    def execute_dialogue_direct(self):
+    # execute dialog direct (combines the previous two methods)
+    def dialogue_direct(self):
         response = self.execute_dialogue_action()
         if not response:
             user_message = self.cat.working_memory["user_message_json"]["text"]

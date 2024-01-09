@@ -1,6 +1,6 @@
 from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
-from typing import Dict, List
+from typing import Dict
 from .cform_v3 import CBaseModel
 from pydantic import Field
 
@@ -33,12 +33,6 @@ class UserRegistration(CBaseModel):
         result += "</tr>"
         result += "</table>"
         return result
-
-
-
-'''@hook
-def execute_action(model: UserRegistration):
-    pass'''
 
 
 # Start intent

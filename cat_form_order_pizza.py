@@ -1,7 +1,7 @@
 from cat.mad_hatter.decorators import tool, hook
-from pydantic import field_validator, Field
+from pydantic import Field, field_validator
 from cat.log import log
-from typing import Dict, List
+from typing import Dict
 from .cform_v3 import CBaseModel
 import random
 
@@ -66,21 +66,6 @@ class PizzaOrder(CBaseModel):
         result += f"<img style='width:400px' src='https://maxdam.github.io/cat-pizza-challenge/img/order/pizza{random.randint(0, 6)}.jpg'>"
         return result
 
-    def lookup_ask_menu(self):
-        """
-        What is on the menu?
-        Which types of pizza do you have?
-        Could you show me a menu?
-        """
-
-        log.critical("LOOKUP ASK MENU")
-        return self.cat.llm(f"The available pizzas are the following: " + menu)
-
-
-'''@hook
-def execute_action(model: PizzaOrder):
-    pass'''
-
 
 # Order pizza start intent
 @tool(return_direct=True)
@@ -110,25 +95,12 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
 def agent_prompt_prefix(prefix, cat) -> str:
     return PizzaOrder.dialogue_prefix(prefix, cat)
 
-
-menu = [
-    "Margherita",
-    "Romana",
-    "Quattro Formaggi",
-    "Capricciosa",
-    "Bufalina",
-    "Diavola"
-]
-
 # Get pizza menu
 @tool()
 def ask_menu(input, cat):
     """What is on the menu?
     Which types of pizza do you have?"""
-
     log.critical("INTENT ORDER PIZZA MENU")
-    # return menu
-    response = "The available pizzas are the following:"
-    for pizza in menu:
-        response += f"\n - {pizza}"
+    menu = [ "Margherita", "Romana", "Quattro Formaggi", "Capricciosa", "Bufalina", "Diavola"]
+    response = "The available pizzas are the following:\n" + ", ".join(menu)
     return response

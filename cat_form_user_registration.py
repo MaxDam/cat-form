@@ -1,7 +1,7 @@
 from cat.mad_hatter.decorators import tool, hook
 from cat.log import log
 from typing import Dict
-from .cform_v3 import CBaseModel
+from .cform import CBaseModel
 from pydantic import Field
 
 

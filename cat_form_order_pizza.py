@@ -2,7 +2,7 @@ from cat.mad_hatter.decorators import tool, hook
 from pydantic import Field, field_validator
 from cat.log import log
 from typing import Dict
-from .cform_v3 import CBaseModel
+from .cform import CBaseModel
 import random
 
 

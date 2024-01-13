@@ -10,6 +10,16 @@ class MySettings(BaseModel):
         title="auto handle conversation",
         default=True
     )
+    pizza_order_examples: str = Field(
+        title="pizza order examples",
+        default="{}",
+        extra={"type": "TextArea"}
+    )
+    user_registration_examples: str = Field(
+        title="user registration examples",
+        default="{}",
+        extra={"type": "TextArea"}
+    )
 
 @plugin
 def settings_schema():

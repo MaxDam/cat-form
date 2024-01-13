@@ -39,10 +39,14 @@ class PizzaOrder(CBaseModel):
     def validate_pizza_type(cls, pizza_type: str):
         log.critical(f"Validating pizza type: {pizza_type}")
         if pizza_type not in [None, ""] and pizza_type not in list(menu):
-            raise ValueError(f"{pizza_type} is not present in the menù")
+            raise ValueError(f"pizza_type {pizza_type} is not present in the menu")
 
         return
     '''
+
+    def examples(self):
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+        return settings["pizza_order_examples"]
 
     def execute_action(self):
         result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 

@@ -12,6 +12,10 @@ class UserRegistration(CBaseModel):
     company: str = Field(description="Company where the user who wants to register works")
     email:   str = Field(description="Email of the user who wants to register")
 
+    def examples(self):
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+        return settings["user_registration_examples"]
+
     def execute_action(self):
         result = "<h3>You have registered<h3><br>" 
         result += "<table border=0>"

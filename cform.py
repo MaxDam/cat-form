@@ -13,6 +13,11 @@ from langchain.output_parsers import PydanticOutputParser
 import guardrails as gd #https://www.guardrailsai.com/docs/guardrails_ai/getting_started
 from kor import create_extraction_chain, from_pydantic #https://github.com/eyurtsev/kor
 
+from langchain.prompts.few_shot import FewShotPromptTemplate
+from langchain.prompts.prompt import PromptTemplate
+from langchain.prompts.example_selector import SemanticSimilarityExampleSelector
+from langchain.vectorstores import Qdrant
+
 
 # Class Conversational Base Model
 class CBaseModel(BaseModel):
@@ -71,6 +76,10 @@ class CBaseModel(BaseModel):
     def execute_action(self):
         return self.model_dump_json(indent=4)
     
+    # Dialog examples
+    def examples(self):
+        return {}
+    
 
 # Conversational Form State
 class CFormState(Enum):
@@ -92,8 +101,9 @@ class CForm():
         self.errors  = []
         self.ask_for = []
 
+        #self.load_dialog_examples_rag()
         #self.load_confirm_examples_rag()
-
+        
 
     ####################################
     ######## HANDLE ACTIVE FORM ########
@@ -359,6 +369,79 @@ class CForm():
         return {key: value for key, value in details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
 
 
+    # Load dialog examples for RAG
+    def load_dialog_examples_rag(self):    
+        self.prompt_tpl_update   = None
+        self.prompt_tpl_response = None
+
+        '''
+        # Examples json format
+        self.model.examples = [
+            {
+                "user_message": "I want to order a pizza",
+                "model_before": "{}",
+                "model_after":  "{}",
+                "validation":   "ask_for: pizza type, address, phone; error: none",
+                "response":     "What kind of pizza do you want?"
+            },
+            {
+                "user_message": "I live in Via Roma 1",
+                "model_before": "{\"pizza_type\":\"Margherita\"}",
+                "model_after":  "{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}",
+                "validation":   "ask_for: phone; error: none",
+                "response":     "Could you give me your phone number?"
+            },
+            {
+                "user_message": "My phone is: 123123123",
+                "model_before": "{\"pizza_type\":\"Diavola\"}",
+                "model_after":  "{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}",
+                "validation":   "ask_for: address; error: none",
+                "response":     "Could you give me your delivery address?"
+            },
+            {
+                "user_message": "I want a test pizza",
+                "model_before": "{\"phone\":\"123123123\"}",
+                "model_after":  "{\"pizza_type\":\"test\", \"phone\":\"123123123\"}",
+                "validation":   "ask_for: address; error: pizza_type test is not present in the menu",
+                "response":     "Pizza type is not a valid pizza"
+            }
+        ]
+        '''
+
+        # If no examples are available, return
+        if not self.model.examples:
+            return
+
+        # Create example selector
+        example_selector = SemanticSimilarityExampleSelector.from_examples(
+            self.model.examples, self.cat.embedder, Qdrant, k=1, location=':memory:'
+        )
+
+        # Create promptTemplate from examples_selector and example_update_model_prompt
+        self.prompt_tpl_update = FewShotPromptTemplate(
+            example_selector = example_selector,
+            example_prompt   = PromptTemplate(
+                input_variables = ["user_message", "model_before", "model_after"],
+                template = "User Message: {user_message}\nModel: {model_before}\nUpdated Model: {model_after}"
+            ),
+            suffix = "Question: {input}",
+            input_variables = ["input"]
+        )
+        #print(self.prompt_tpl_update.format(input="<user question>"))
+
+        # Create promptTemplate from examples_selector and example_response_prompt
+        self.prompt_tpl_response = FewShotPromptTemplate(
+            example_selector = example_selector,
+            example_prompt   = PromptTemplate(
+                input_variables = ["validation", "response"],
+                template = "Validation: {validation}\nResponse: {response}"
+            ),
+            suffix = "Validation: {input}",
+            input_variables = ["input"]
+        )
+        #print(self.prompt_tpl_response.format(input="<pydantic validation result>"))
+
+
     ####################################
     ######### EXECUTE DIALOGUE #########
     ####################################
@@ -476,7 +559,7 @@ class CForm():
         prompt_suffix = self.cat.mad_hatter.execute_hook("agent_prompt_suffix", MAIN_PROMPT_SUFFIX, cat=self.cat)
         response = self.cat.agent_manager.execute_memory_chain(agent_input, prompt_prefix, prompt_suffix, self.cat)
         return response.get("output")
-
+    
 
 ############################################################
 ######### HOOKS FOR AUTOMATIC HANDLE CONVERSATION ##########

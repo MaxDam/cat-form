@@ -12,12 +12,12 @@ class MySettings(BaseModel):
     )
     pizza_order_examples: str = Field(
         title="pizza order examples",
-        default="{}",
+        default="[]",
         extra={"type": "TextArea"}
     )
     user_registration_examples: str = Field(
         title="user registration examples",
-        default="{}",
+        default="[]",
         extra={"type": "TextArea"}
     )
 

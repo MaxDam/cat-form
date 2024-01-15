@@ -89,16 +89,6 @@ def stop_order_pizza_intent(input, cat):
     log.critical("INTENT ORDER PIZZA STOP")
     return PizzaOrder.stop(cat)
 
-'''
-# Order pizza handle conversation
-@hook
-def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return PizzaOrder.dialogue_action(fast_reply, cat)
-
-@hook
-def agent_prompt_prefix(prefix, cat) -> str:
-    return PizzaOrder.dialogue_prefix(prefix, cat)
-'''
 
 # Get pizza menu
 @tool()
@@ -109,3 +99,15 @@ def ask_menu(input, cat):
     menu = [ "Margherita", "Romana", "Quattro Formaggi", "Capricciosa", "Bufalina", "Diavola"]
     response = "The available pizzas are the following:\n" + ", ".join(menu)
     return response
+
+
+'''
+# Order pizza handle conversation
+@hook
+def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
+    return PizzaOrder.dialogue_action(fast_reply, cat)
+
+@hook
+def agent_prompt_prefix(prefix, cat) -> str:
+    return PizzaOrder.dialogue_prefix(prefix, cat)
+'''

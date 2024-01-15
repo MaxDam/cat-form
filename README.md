@@ -65,3 +65,6 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
 def agent_prompt_prefix(prefix, cat) -> str:
     return PizzaOrder.dialogue_prefix(prefix, cat)
 ```
+
+## Flow
+<img src="./schema/cat-form.jpg" width=400>

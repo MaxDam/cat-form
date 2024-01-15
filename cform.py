@@ -83,15 +83,17 @@ class CBaseModel(BaseModel):
 
 # Conversational Form State
 class CFormState(Enum):
-    ASK_INFORMATIONS    = 0
-    ASK_SUMMARY         = 1
+    INVALID         = 0
+    VALID           = 1
+    WAIT_CONFIRM    = 2
+    UPDATE          = 3
 
 
 # Class Conversational Form
 class CForm():
 
     def __init__(self, model_class, key, cat):
-        self.state = CFormState.ASK_INFORMATIONS
+        self.state = CFormState.INVALID
         self.model_class = model_class
         self.model = model_class.model_construct()
         self.key   = key
@@ -242,32 +244,65 @@ class CForm():
     # (Return True if the model is updated)
     def update(self):
 
-        # Extract new info
-        #details = self._extract_info_by_pydantic()
-        #details = self._extract_info_by_kor()
-        details = self._extract_info_by_guardrails()
-        if details is None:
+        # User message to json details
+        json_details = self.user_message_to_json()
+        if json_details is None:
             return False
         
-        # Clean json details
-        print("details", details)
-        details = self._clean_json_details(details)
-
-        # update form
-        new_details = self.model.model_dump() | details
-        new_details = self._clean_json_details(new_details)
-        print("new_details", new_details)
-
+        # model merge with details
+        print("json_details", json_details)
+        new_model = self.model_merge(json_details)
+        print("new_model", new_model)
+        
         # Check if there is no information in the new_model that can update the form
-        if new_details == self.model.model_dump():
+        if new_model == self.model.model_dump():
             return False
 
         # Validate new_details
+        self.model_validate(new_model)
+                    
+        # If there are errors, return false
+        if len(self.errors) > 0:
+            return False
+
+        # Overrides the current model with the new_model
+        self.model = self.model.model_construct(**new_model)
+
+        log.critical(f'MODEL : {self.model.model_dump()}')
+        return True
+
+
+    # User message to json
+    def user_message_to_json(self):
+        #json_details = self._extract_info_by_pydantic()
+        #json_details = self._extract_info_by_kor()
+        json_details = self._extract_info_by_guardrails()
+        return json_details
+
+
+    # Model merge (actual model + details = new model)
+    def model_merge(self, json_details):
+        # Clean json details
+        json_details = {key: value for key, value in json_details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
+
+        # update form
+        new_model = self.model.model_dump() | json_details
+        
+        # Clean json new_details
+        new_model = {key: value for key, value in new_model.items() if value not in [None]}        
+        return new_model
+
+
+    # Validate model
+    def model_validate(self, model):
+        self.ask_for = []
+        self.errors  = []
+        self.state = CFormState.INVALID
+                
         try:
-            self.ask_for = []
-            self.errors  = []
-            self.model.model_validate(new_details)
-            self.is_valid = True
+            self.model.model_validate(model)
+            self.state = CFormState.VALID
+
         except ValidationError as e:
             print(f'validation error: {e}')
             # Collect ask_for and errors
@@ -276,17 +311,11 @@ class CForm():
                     self.ask_for.append(error_message['loc'][0])
                 else:
                     self.errors.append(error_message["msg"])
-                    
-        # If there are errors, raise an exception
-        if len(self.errors) > 0:
-            return False
 
-        # Overrides the current model with the new_model
-        self.model = self.model.model_construct(**new_details)
 
-        log.critical(f'MODEL : {self.model.model_dump()}')
-        return True
-
+    #############################################
+    ############ USER MESSAGE TO JSON ###########
+    #############################################
 
     # Extracted new informations from the user's response (by pydantic)
     def _extract_info_by_pydantic(self):
@@ -364,10 +393,9 @@ class CForm():
         return {}
 
 
-    # Clean json details
-    def _clean_json_details(self, details):
-        return {key: value for key, value in details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
-
+    #################################
+    ############ EXAMPLES ###########
+    #################################
 
     # Load dialog examples for RAG
     def load_dialog_examples_rag(self):    
@@ -449,42 +477,47 @@ class CForm():
     # Execute the dialogue step
     def dialogue_action(self):
         log.critical("dialogue_action")
-        log.warning(f" state: {self.state}, valid: {self.is_valid}")
+        log.warning(f"STATE: {self.state}")
 
         #self.cat.working_memory["episodic_memories"] = []
 
-        # If the form is valid and ask_confirm is False, execute action directly
+        # Get settings
         settings = self.cat.mad_hatter.get_plugin().load_settings()
-        if self.is_valid and settings["ask_confirm"] is False:
-            log.warning("> EXECUTE ACTION")
-            del self.cat.working_memory[self.key]   
-            return self.model.execute_action()
         
-        # Check user confirm
-        if self.is_valid and self.state == CFormState.ASK_SUMMARY:
+        if self.state in [CFormState.INVALID, CFormState.UPDATE]:
+            self.update()
+            log.warning("> UPDATE")
+
+        if self.state in [CFormState.VALID]:
+            if settings["ask_confirm"] is False:
+                log.warning("> EXECUTE ACTION")
+                del self.cat.working_memory[self.key]   
+                return self.model.execute_action()
+            else:
+                self.state = CFormState.WAIT_CONFIRM
+                log.warning("> STATE=WAIT_CONFIRM")
+                return None
+            
+        if self.state in [CFormState.WAIT_CONFIRM]:
             if self.check_user_confirm():
                 log.warning("> EXECUTE ACTION")
                 del self.cat.working_memory[self.key]   
                 return self.model.execute_action()
             else:
-                log.warning("> STATE=ASK_INFORMATIONS")
-                self.state = CFormState.ASK_INFORMATIONS
-                
-        # Switch in user ask confirm
-        if self.is_valid and self.state == CFormState.ASK_INFORMATIONS:
-            self.state = CFormState.ASK_SUMMARY
-            log.warning("> STATE=ASK_SUMMARY")
-            return None
+                log.warning("> STATE=UPDATE")
+                self.state = CFormState.UPDATE
+                return None
 
-        # update model from user response
-        self.update()
-        log.warning("> UPDATE")
         return None
     
 
     # execute dialog prompt prefix
     def dialogue_prefix(self, prompt_prefix):
         log.critical("dialogue_prefix")
+        log.warning(f"STATE: {self.state}")
+
+        # Get settings
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
 
         # Get class fields descriptions
         class_descriptions = []
@@ -497,8 +530,10 @@ class CForm():
         formatted_ask_for     = ", ".join(self.ask_for)
         formatted_errors      = ", ".join(self.errors)
 
-        # Set prompt
-        if not self.is_valid:
+        prompt = prompt_prefix
+
+        if self.state in [CFormState.INVALID]:
+            # PROMPT ASK MISSING INFO
             prompt = \
                 f"Your goal is to have the user fill out a form containing the following fields:\n\
                 {formatted_model_class}\n\n\
@@ -517,12 +552,22 @@ class CForm():
                 
             prompt += \
                 f"ask the user to give you the necessary information."
-        else:
+
+        if self.state in [CFormState.WAIT_CONFIRM]:
+            # PROMPT SHOW SUMMARY
             prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
                 {formatted_model_class}\n\n\
                 you have collected all the available data:\n\
                 {formatted_model}\n\n\
                 show the user the data and ask them to confirm that it is correct.\n"
+
+        if self.state in [CFormState.UPDATE]:
+            # PROMPT ASK CHANGE INFO
+            prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have collected all the available data:\n\
+                {formatted_model}\n\n\
+                show the user the data and ask him to provide the updated data.\n"
 
         # Print prompt prefix
         print("*"*10)

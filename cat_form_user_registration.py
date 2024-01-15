@@ -54,6 +54,7 @@ def stop_register_intent(input, cat):
     log.critical("INTENT USER REGISTRATION STOP")
     return UserRegistration.stop(cat)
 
+
 '''
 # User registration handle conversation
 @hook

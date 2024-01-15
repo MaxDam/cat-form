@@ -3,6 +3,7 @@ from cat.log import log
 from typing import Dict
 from .cform import CBaseModel
 from pydantic import Field
+import json
 
 
 class UserRegistration(CBaseModel):
@@ -12,11 +13,11 @@ class UserRegistration(CBaseModel):
     company: str = Field(description="Company where the user who wants to register works")
     email:   str = Field(description="Email of the user who wants to register")
 
-    def examples(self):
-        settings = self.cat.mad_hatter.get_plugin().load_settings()
-        return settings["user_registration_examples"]
-
-    def execute_action(self):
+    def examples(self, cat):
+        settings = cat.mad_hatter.get_plugin().load_settings()
+        return json.loads(settings["user_registration_examples"])
+    
+    def execute_action(self, cat):
         result = "<h3>You have registered<h3><br>" 
         result += "<table border=0>"
         result += "<tr>"

@@ -20,12 +20,12 @@ class PizzaOrder(CBaseModel):
     #...
     
     # Implement execute action overriding method
-    def execute_action(self):
+    def execute_action(self, cat):
         # execute action
         return # action output
     
     # Implement examples method	
-    def examples(self):
+    def examples(self, cat):
         return [
             {
                 "user_message": "My phone is: 123123123",

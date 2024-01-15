@@ -22,6 +22,14 @@ from langchain.vectorstores import Qdrant
 # Class Conversational Base Model
 class CBaseModel(BaseModel):
     
+    # Get CForm instance
+    @classmethod
+    def get(cls, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            return cat.working_memory[key]
+        return None
+    
     # Start conversation
     # (typically inside the tool that starts the intent)
     @classmethod
@@ -70,15 +78,16 @@ class CBaseModel(BaseModel):
             return cform.dialogue_prefix(prefix)
         return prefix
 
+
     # METHODS TO OVERRIDE
     
     # Execute final form action
-    def execute_action(self):
+    def execute_action(self, cat):
         return self.model_dump_json(indent=4)
     
     # Dialog examples
-    def examples(self):
-        return {}
+    def examples(self, cat):
+        return []
     
 
 # Conversational Form State
@@ -103,8 +112,10 @@ class CForm():
         self.errors  = []
         self.ask_for = []
 
-        #self.load_dialog_examples_rag()
-        #self.load_confirm_examples_rag()
+        self.prompt_tpl_update   = None
+        self.prompt_tpl_response = None
+        self.load_dialog_examples_by_rag()
+        #self.load_confirm_examples_by_rag()
         
 
     ####################################
@@ -168,8 +179,8 @@ class CForm():
         return confirm
     
 
-    # Load confirm examples RAG
-    def load_confirm_examples_rag(self):
+    # Load confirm examples by RAG
+    def load_confirm_examples_by_rag(self):
         
         qclient = self.cat.memory.vectors.vector_db
         self.confirm_collection = "user_confirm"
@@ -273,7 +284,8 @@ class CForm():
 
 
     # User message to json
-    def user_message_to_json(self):
+    def user_message_to_json(self): 
+        #json_details = self._extract_info_from_scratch()
         #json_details = self._extract_info_by_pydantic()
         #json_details = self._extract_info_by_kor()
         json_details = self._extract_info_by_guardrails()
@@ -316,6 +328,25 @@ class CForm():
     #############################################
     ############ USER MESSAGE TO JSON ###########
     #############################################
+
+    # Extracted new informations from the user's response (from sratch)
+    def _extract_info_from_scratch(self):
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        
+        prompt = "Update the following JSON with information extracted from the Sentence:\n\n"
+        if self.prompt_tpl_update:
+            prompt += f"\
+                {self.prompt_tpl_update.format(input=user_message)}"
+        else:
+            prompt += f"\
+                Sentence: {user_message}\n\
+                JSON:{json.dumps(self.model.dict(), indent=4)}\n\
+                Updated JSON:"
+            
+        json_str = self.cat.llm(prompt)
+        user_response_json = json.loads(json_str)
+        return user_response_json
+    
 
     # Extracted new informations from the user's response (by pydantic)
     def _extract_info_by_pydantic(self):
@@ -397,52 +428,52 @@ class CForm():
     ############ EXAMPLES ###########
     #################################
 
-    # Load dialog examples for RAG
-    def load_dialog_examples_rag(self):    
-        self.prompt_tpl_update   = None
-        self.prompt_tpl_response = None
-
+    # Load dialog examples by RAG
+    def load_dialog_examples_by_rag(self):    
         '''
         # Examples json format
         self.model.examples = [
             {
                 "user_message": "I want to order a pizza",
-                "model_before": "{}",
-                "model_after":  "{}",
+                "model_before": "{{}}",
+                "model_after":  "{{}}",
                 "validation":   "ask_for: pizza type, address, phone; error: none",
                 "response":     "What kind of pizza do you want?"
             },
             {
                 "user_message": "I live in Via Roma 1",
-                "model_before": "{\"pizza_type\":\"Margherita\"}",
-                "model_after":  "{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}",
+                "model_before": "{{\"pizza_type\":\"Margherita\"}}",
+                "model_after":  "{{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}}",
                 "validation":   "ask_for: phone; error: none",
                 "response":     "Could you give me your phone number?"
             },
             {
                 "user_message": "My phone is: 123123123",
-                "model_before": "{\"pizza_type\":\"Diavola\"}",
-                "model_after":  "{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}",
+                "model_before": "{{\"pizza_type\":\"Diavola\"}}",
+                "model_after":  "{{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}}",
                 "validation":   "ask_for: address; error: none",
                 "response":     "Could you give me your delivery address?"
             },
             {
                 "user_message": "I want a test pizza",
-                "model_before": "{\"phone\":\"123123123\"}",
-                "model_after":  "{\"pizza_type\":\"test\", \"phone\":\"123123123\"}",
+                "model_before": "{{\"phone\":\"123123123\"}}",
+                "model_after":  "{{\"pizza_type\":\"test\", \"phone\":\"123123123\"}}",
                 "validation":   "ask_for: address; error: pizza_type test is not present in the menu",
                 "response":     "Pizza type is not a valid pizza"
             }
         ]
         '''
 
-        # If no examples are available, return
-        if not self.model.examples:
-            return
+        # Get examples
+        examples = self.model.examples(self.cat)
 
+        # If no examples are available, return
+        if not examples:
+            return
+        
         # Create example selector
         example_selector = SemanticSimilarityExampleSelector.from_examples(
-            self.model.examples, self.cat.embedder, Qdrant, k=1, location=':memory:'
+            examples, self.cat.embedder, Qdrant, k=1, location=':memory:'
         )
 
         # Create promptTemplate from examples_selector and example_update_model_prompt
@@ -492,7 +523,7 @@ class CForm():
             if settings["ask_confirm"] is False:
                 log.warning("> EXECUTE ACTION")
                 del self.cat.working_memory[self.key]   
-                return self.model.execute_action()
+                return self.model.execute_action(self.cat)
             else:
                 self.state = CFormState.WAIT_CONFIRM
                 log.warning("> STATE=WAIT_CONFIRM")
@@ -502,7 +533,7 @@ class CForm():
             if self.check_user_confirm():
                 log.warning("> EXECUTE ACTION")
                 del self.cat.working_memory[self.key]   
-                return self.model.execute_action()
+                return self.model.execute_action(self.cat)
             else:
                 log.warning("> STATE=UPDATE")
                 self.state = CFormState.UPDATE
@@ -527,8 +558,9 @@ class CForm():
         # Formatted texts
         formatted_model_class = ", ".join(class_descriptions)
         formatted_model       = ", ".join([f"{key}: {value}" for key, value in self.model.model_dump().items()])
-        formatted_ask_for     = ", ".join(self.ask_for)
-        formatted_errors      = ", ".join(self.errors)
+        formatted_ask_for     = ", ".join(self.ask_for) if self.ask_for else None
+        formatted_errors      = ", ".join(self.errors) if self.errors else None
+        formatted_validation  = f"ask_for: {formatted_ask_for}; error: {formatted_errors}"
 
         prompt = prompt_prefix
 
@@ -540,18 +572,23 @@ class CForm():
                 you have currently collected the following values:\n\
                 {formatted_model}\n\n"
 
-            if len(self.errors) > 0:
+            if self.errors:
                 prompt += \
                     f"and in the validation you got the following errors:\n\
                     {formatted_errors}\n\n"
 
-            if len(self.ask_for) > 0:    
+            if self.ask_for:    
                 prompt += \
                     f"and the following fields are still missing:\n\
                     {formatted_ask_for}\n\n"
-                
+
             prompt += \
                 f"ask the user to give you the necessary information."
+            
+            if self.prompt_tpl_response:
+                prompt += f"\n\n\
+                    {self.prompt_tpl_response.format(input=formatted_validation)}"
+                
 
         if self.state in [CFormState.WAIT_CONFIRM]:
             # PROMPT SHOW SUMMARY
@@ -561,6 +598,7 @@ class CForm():
                 {formatted_model}\n\n\
                 show the user the data and ask them to confirm that it is correct.\n"
 
+
         if self.state in [CFormState.UPDATE]:
             # PROMPT ASK CHANGE INFO
             prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
@@ -568,6 +606,7 @@ class CForm():
                 you have collected all the available data:\n\
                 {formatted_model}\n\n\
                 show the user the data and ask him to provide the updated data.\n"
+
 
         # Print prompt prefix
         print("*"*10)

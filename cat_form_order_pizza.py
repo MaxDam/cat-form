@@ -4,7 +4,7 @@ from cat.log import log
 from typing import Dict
 from .cform import CBaseModel
 import random
-
+import json
 
 class PizzaOrder(CBaseModel):
     
@@ -44,11 +44,11 @@ class PizzaOrder(CBaseModel):
         return
     '''
 
-    def examples(self):
-        settings = self.cat.mad_hatter.get_plugin().load_settings()
-        return settings["pizza_order_examples"]
+    def examples(self, cat):
+        settings = cat.mad_hatter.get_plugin().load_settings()
+        return json.loads(settings["pizza_order_examples"])
 
-    def execute_action(self):
+    def execute_action(self, cat):
         result = "<h3>PIZZA CHALLENGE - ORDER COMPLETED<h3><br>" 
         result += "<table border=0>"
         result += "<tr>"

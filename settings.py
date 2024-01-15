@@ -1,7 +1,18 @@
 from pydantic import BaseModel, Field
 from cat.mad_hatter.decorators import plugin
+from enum import Enum
+
+class JsonExtractorType(Enum):
+    a: str  = 'from scratch'
+    b: str  = 'pydantic'
+    c: str  = 'kor'
+    d: str  = 'guardrails'
 
 class MySettings(BaseModel):
+    json_extractor: JsonExtractorType = Field(
+        title="json extractor",
+        default="guardrails"
+    )
     ask_confirm: bool = Field(
         title="ask confirm",
         default=True

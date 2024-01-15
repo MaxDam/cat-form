@@ -285,10 +285,20 @@ class CForm():
 
     # User message to json
     def user_message_to_json(self): 
-        #json_details = self._extract_info_from_scratch()
-        #json_details = self._extract_info_by_pydantic()
-        #json_details = self._extract_info_by_kor()
-        json_details = self._extract_info_by_guardrails()
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+
+        if settings["json_extractor"] == "from scratch":
+            json_details = self._extract_info_from_scratch()
+
+        if settings["json_extractor"] == "pydantic":
+            json_details = self._extract_info_by_pydantic()
+                
+        if settings["json_extractor"] == "kor":
+            json_details = self._extract_info_by_kor()
+                    
+        if settings["json_extractor"] == "guardrails":
+            json_details = self._extract_info_by_guardrails()
+                        
         return json_details
 
 
@@ -435,29 +445,29 @@ class CForm():
         self.model.examples = [
             {
                 "user_message": "I want to order a pizza",
-                "model_before": "{{}}",
-                "model_after":  "{{}}",
+                "model_before": "{}",
+                "model_after":  "{}",
                 "validation":   "ask_for: pizza type, address, phone; error: none",
                 "response":     "What kind of pizza do you want?"
             },
             {
                 "user_message": "I live in Via Roma 1",
-                "model_before": "{{\"pizza_type\":\"Margherita\"}}",
-                "model_after":  "{{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}}",
+                "model_before": "{\"pizza_type\":\"Margherita\"}",
+                "model_after":  "{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}",
                 "validation":   "ask_for: phone; error: none",
                 "response":     "Could you give me your phone number?"
             },
             {
                 "user_message": "My phone is: 123123123",
-                "model_before": "{{\"pizza_type\":\"Diavola\"}}",
-                "model_after":  "{{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}}",
+                "model_before": "{\"pizza_type\":\"Diavola\"}",
+                "model_after":  "{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}",
                 "validation":   "ask_for: address; error: none",
                 "response":     "Could you give me your delivery address?"
             },
             {
                 "user_message": "I want a test pizza",
-                "model_before": "{{\"phone\":\"123123123\"}}",
-                "model_after":  "{{\"pizza_type\":\"test\", \"phone\":\"123123123\"}}",
+                "model_before": "{\"phone\":\"123123123\"}",
+                "model_after":  "{\"pizza_type\":\"test\", \"phone\":\"123123123\"}",
                 "validation":   "ask_for: address; error: pizza_type test is not present in the menu",
                 "response":     "Pizza type is not a valid pizza"
             }
@@ -466,6 +476,8 @@ class CForm():
 
         # Get examples
         examples = self.model.examples(self.cat)
+
+        print(f"examples: {examples}")
 
         # If no examples are available, return
         if not examples:

@@ -3,11 +3,11 @@ from cat.mad_hatter.decorators import plugin
 from enum import Enum
 
 class JsonExtractorType(Enum):
-    a: str  = 'from scratch'
-    b: str  = 'pydantic'
-    c: str  = 'kor'
-    d: str  = 'guardrails'
-
+    a: str  = 'langchain'
+    b: str  = 'kor'
+    c: str  = 'guardrails'
+    d: str  = 'from examples'
+    
 class MySettings(BaseModel):
     json_extractor: JsonExtractorType = Field(
         title="json extractor",

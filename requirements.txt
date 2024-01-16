@@ -1,0 +1,2 @@
+kor==1.0.0
+guardrails-ai==0.3.2

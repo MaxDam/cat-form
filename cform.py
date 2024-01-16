@@ -1,254 +1,129 @@
-import json
+from pydantic import ValidationError, BaseModel
+from cat.mad_hatter.decorators import hook
+from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX, MAIN_PROMPT_SUFFIX
 from cat.log import log
-from pydantic import ValidationError
-from cat.looking_glass.prompts import MAIN_PROMPT_PREFIX
+from typing import Dict
 from enum import Enum
+import json
+
+from qdrant_client.http.models import Distance, VectorParams, PointStruct
+
+from langchain.prompts.prompt import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+import guardrails as gd #https://www.guardrailsai.com/docs/guardrails_ai/getting_started
+from kor import create_extraction_chain, from_pydantic #https://github.com/eyurtsev/kor
+
+from langchain.prompts.few_shot import FewShotPromptTemplate
+from langchain.prompts.prompt import PromptTemplate
+from langchain.prompts.example_selector import SemanticSimilarityExampleSelector
+from langchain.vectorstores import Qdrant
+
+
+# Class Conversational Base Model
+class CBaseModel(BaseModel):
+    
+    # Get CForm instance
+    @classmethod
+    def get(cls, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            return cat.working_memory[key]
+        return None
+    
+    # Start conversation
+    # (typically inside the tool that starts the intent)
+    @classmethod
+    def start(cls, cat):
+        key = cls.__name__
+        if key not in cat.working_memory.keys():
+            cform = CForm(cls, key, cat)
+            cat.working_memory[key] = cform
+            cform.check_active_form()
+            response = cform.dialogue_action()
+            return response
+        cform = cat.working_memory[key]
+        cform.check_active_form()
+        #response = cform.dialogue_direct()
+        response = cform.execute_memory_chain()
+        return response
+
+    # Stop conversation
+    # (typically inside the tool that stops the intent)
+    @classmethod
+    def stop(cls, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            del cat.working_memory[key]
+        return
+
+    # Execute the dialogue step
+    # (typically inside the agent_fast_reply hook)
+    @classmethod
+    def dialogue_action(cls, fast_reply, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            cform = cat.working_memory[key]
+            response = cform.dialogue_action()
+            if response:
+                return { "output": response }
+        return
+    
+    # Execute the dialogue step
+    # (typically inside the agent_prompt_prefix hook)
+    @classmethod
+    def dialogue_prefix(cls, prefix, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            cform = cat.working_memory[key]
+            return cform.dialogue_prefix(prefix)
+        return prefix
+
+
+    # METHODS TO OVERRIDE
+    
+    # Execute final form action
+    def execute_action(self, cat):
+        return self.model_dump_json(indent=4)
+    
+    # Dialog examples
+    def examples(self, cat):
+        return []
+    
 
 # Conversational Form State
 class CFormState(Enum):
-    STOPPED             = 0 
-    STARTED             = 1    
-    ASK_INFORMATIONS    = 2
-    ASK_SUMMARY         = 3
-    EXECUTE_ACTION      = 4
+    INVALID         = 0
+    VALID           = 1
+    WAIT_CONFIRM    = 2
+    UPDATE          = 3
 
 
 # Class Conversational Form
-class CForm:
+class CForm():
 
-    def __init__(self, model, cat, key):
-        self.state = CFormState.STOPPED
-        self.model = model
-        self.cat = cat
-        self.key = key
+    def __init__(self, model_class, key, cat):
+        self.state = CFormState.INVALID
+        self.model_class = model_class
+        self.model = model_class.model_construct()
+        self.key   = key
+        self.cat   = cat
         
-        self.model_is_updated   = False
-        self.return_only_prompt = False
+        self.is_valid = False
+        self.errors  = []
+        self.ask_for = []
 
-        # CForm Hook - prompt_prefix(prompt, cat)
-        self.prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
-        if hasattr(type(self.model), 'prompt_prefix'):
-            self.prefix = type(self.model).prompt_prefix(self.prefix, self.cat)
-
-        # CForm Hook - language(language, cat)
-        self.language = 'English'
-        if hasattr(type(self.model), 'set_language'):
-            self.language = type(self.model).set_language(self.language, self.cat)
-    
-
-    ### ASK MISSING INFORMATIONS ###
-
-    # Queries the llm asking for the missing fields of the form, without memory chain
-    def ask_missing_information(self) -> str:
-       
-        # Gets the information it should ask the user based on the fields that are still empty
-        ask_for = self._check_what_is_empty()
-
-        # Get user message and chat history
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        chat_history = self.cat.agent_manager.agent_prompt_chat_history(
-            self.cat.working_memory["history"]
-        )
+        self.prompt_tpl_update   = None
+        self.prompt_tpl_response = None
+        self.load_dialog_examples_by_rag()
+        #self.load_confirm_examples_by_rag()
         
-        # Prompt
-        prompt = f"Below is are some things to ask the user for in a coversation way.\n\
-        You should only ask one question at a time even if you don't get all the info.\n\
-        Don't ask as a list! Don't greet the user! Don't say Hi.\n\
-        Explain you need to get some info.\n\
-        If the ask_for list is empty then thank them and ask how you can help them. \n\
-        Ask only one question at a time\n\n\
-        ### ask_for list: {ask_for}\n\n\
-        use {self.language} language."
-        print(f'prompt: {prompt}')
 
-        # CForm Hook - get_ask_missing_information_prompt(prompt, cat)
-        if hasattr(type(self.model), 'get_ask_missing_information_prompt'):
-            prompt = type(self.model).get_ask_missing_information_prompt(prompt, ask_for, self.cat)
-
-        # Return only prompt
-        if self.return_only_prompt is True:
-            log.warning(f'MISSING INFORMATIONS: {prompt}')
-            return prompt
-
-        log.warning(f'MISSING INFORMATIONS: {ask_for}')
-        response = self.cat.llm(prompt)
-
-        return response 
-
-
-    # Return list of empty form's fields
-    def _check_what_is_empty(self):
-        ask_for = []
-        for field, value in self.model.model_dump().items():
-            if value in [None, "", 0]:
-                ask_for.append(f'{field}')
-        return ask_for
-
-
-    ### SUMMARIZATION ###
-
-    # Show summary of the form to the user
-    def show_summary(self, cat):
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        chat_history = self.cat.agent_manager.agent_prompt_chat_history(
-            self.cat.working_memory["history"]
-        )
-        
-        # Prompt
-        prompt = f"show the summary of the data in the completed form and ask the user if they are correct.\n\
-            Don't ask irrelevant questions.\n\
-            Try to be precise and detailed in describing the form and what you need to know.\n\n\
-            ### form data: {self.model}\n\n\
-            use {self.language} language."
-        print(f'prompt: {prompt}')
-
-        # CForm Hook - get_show_summary_prompt(prompt, cat)
-        if hasattr(type(self.model), 'get_show_summary_prompt'):
-            prompt = type(self.model).get_show_summary_prompt(prompt, self.cat)
-
-        # Change status
-        self.state = CFormState.ASK_SUMMARY
-
-        # Return only prompt
-        if self.return_only_prompt is True:
-            log.debug(f'show_summary: {prompt}')
-            return prompt
-        
-        # Queries the LLM
-        response = self.cat.llm(prompt)
-        log.debug(f'show_summary: {response}')
-        return response
-
-
-    # Check user confirm the form data
-    def check_confirm(self) -> bool:
-        
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        
-        # Prompt
-        prompt = f"only respond with YES if the user's message is affirmative\
-        or NO if the user message is negative, do not answer the other way.\n\n\
-        ### user message: {user_message}"
-        print(f'prompt: {prompt}')
-
-        # CForm Hook - get_check_confirm_prompt(prompt, cat)
-        if hasattr(type(self.model), 'get_check_confirm_prompt'):
-            prompt = type(self.model).get_check_confirm_prompt(prompt, self.cat)
-
-        # Queries the LLM and check if user is agree or not
-        response = self.cat.llm(prompt)
-        log.critical(f'check_confirm: {response}')
-        confirm = "YES" in response
-        
-        # If confirmed change status
-        if confirm:
-            self.state = CFormState.EXECUTE_ACTION
-
-        return confirm
-
-
-    ### UPDATE JSON ###
-
-    # Updates the form with the information extracted from the user's response
-    # (Return True if the model is updated)
-    def update_from_user_response(self):
-
-        # Extract new info
-        user_response_json = self._extract_info()
-        if user_response_json is None:
-            return False
-
-        # Gets a new_model with the new fields filled in
-        non_empty_details = {k: v for k, v in user_response_json.items() if v not in [None, ""]}
-        new_model = self.model.copy(update=non_empty_details)
-
-        # Check if there is no information in the new_model that can update the form
-        if new_model.model_dump() == self.model.model_dump():
-            return False
-
-        # Validate new_model (raises ValidationError exception on error)
-        self.model.model_validate(new_model.model_dump())
-
-        # Overrides the current model with the new_model
-        self.model = self.model.model_construct(**new_model.model_dump())
-        #print(f'updated model:\n{self.model.model_dump_json(indent=4)}')
-        log.critical(f'MODEL : {self.model.model_dump_json()}')
-        return True
-
-
-    # Extracted new informations from the user's response (from sratch)
-    def _extract_info(self):
-        user_message = self.cat.working_memory["user_message_json"]["text"]
-        prompt = self._get_pydantic_prompt(user_message)
-        log.debug(f"prompt: {prompt}")
-        json_str = self.cat.llm(prompt)
-        user_response_json = json.loads(json_str)
-        log.debug(f'user response json:\n{user_response_json}')
-        return user_response_json
-
-
-    # return pydantic prompt based from examples
-    def _get_pydantic_prompt(self, message):
-        lines = []
-        
-        # CForm Hook - get_prompt_examples(cat)
-        if hasattr(type(self.model), 'get_prompt_examples'):
-            prompt_examples = type(self.model).get_prompt_examples(self.cat)
-            for example in prompt_examples:
-                lines.append(f"Sentence: {example['sentence']}")
-                lines.append(f"JSON: {self._format_prompt_json(example['json'])}")
-                lines.append(f"Updated JSON: {self._format_prompt_json(example['updatedJson'])}")
-                lines.append("\n")
-
-        result = "Update the following JSON with information extracted from the Sentence:\n\n"
-        result += "\n".join(lines)
-        result += f"Sentence: {message}\nJSON:{json.dumps(self.model.dict(), indent=4)}\nUpdated JSON:"
-        return result
-
-
-    # format json for prompt
-    def _format_prompt_json(self, values):
-        attributes = list(self.model.__annotations__.keys())
-        data_dict = dict(zip(attributes, values))
-        return json.dumps(data_dict, indent=4)
-
-
-    ### EXECUTE DIALOGUE ###
-
-    # Start conversation
-    def start_conversation(self):
-
-        # Set start state
-        self.state  = CFormState.STARTED
-
-        # Set this form as the only active one
-        self._set_active_form()
-
-        # Execute first dialog
-        self.return_only_prompt = False
-        return self.execute_dialogue()
-
-
-    # Stop conversation
-    def stop_conversation(self):
-
-        # Set stop state
-        self.state = CFormState.STOPPED
-        
-        # Delete form from working memory
-        # del self.cat.working_memory[self.key]
-
-
-    # Check if the form is completed
-    def is_completed(self):
-        for k,v in self.model.model_dump().items():
-            if v in [None, ""]:
-                return False
-        return True
-    
+    ####################################
+    ######## HANDLE ACTIVE FORM ########
+    ####################################
 
     # Check that there is only one active form
-    def _set_active_form(self):
+    def check_active_form(self):
         if "_active_cforms" not in self.cat.working_memory.keys():
             self.cat.working_memory["_active_cforms"] = []
         if self.key not in self.cat.working_memory["_active_cforms"]:
@@ -257,118 +132,563 @@ class CForm:
             if key != self.key:
                 self.cat.working_memory["_active_cforms"].remove(key)
                 if key in self.cat.working_memory.keys():
-                    self.cat.working_memory[key].state = CFormState.STOPPED
+                    del self.cat.working_memory[key]
+
+    # Class method get active form
+    @classmethod
+    def get_active_form(cls, cat):
+        if "_active_cforms" in cat.working_memory.keys():
+            key = cat.working_memory["_active_cforms"][0]
+            if key in cat.working_memory.keys():
+                cform = cat.working_memory[key]
+                return cform
+        return None
 
 
-    # Execute the dialogue step
-    def execute_dialogue(self):
+    ####################################
+    ######## CHECK USER CONFIRM ########
+    ####################################
         
-        # Check if the form is active, and if not, it goes out
-        if self._check_is_active() is False:
-            log.critical(f'> FORM {self.key} IS NOT ACTIVE')
-            raise Exception(f"Form {self.key} is not active")
+    # Check user confirm the form data
+    def check_user_confirm(self) -> bool:
+        
+        # Get user message
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        
+        # Confirm prompt
+        confirm_prompt = f"Given a sentence that I will now give you,\n\
+        just respond with 'YES' or 'NO' depending on whether the sentence is:\n\
+        - a refusal either has a negative meaning or is an intention to cancel the form (NO)\n\
+        - an acceptance has a positive or neutral meaning (YES).\n\
+        If you are unsure, answer 'NO'.\n\n\
+        The sentence is as follows:\n\
+        User message: {user_message}"
+        
+        # Print confirm prompt
+        print("*"*10)
+        print("CONFIRM PROMPT:")
+        print(confirm_prompt)
+        print("*"*10)
 
+        # Queries the LLM and check if user is agree or not
+        response = self.cat.llm(confirm_prompt)
+        log.critical(f'check_user_confirm: {response}')
+        confirm = "NO" not in response and "YES" in response
+        
+        print("RESPONSE: " + str(confirm))
+        return confirm
+    
+
+    # Load confirm examples by RAG
+    def load_confirm_examples_by_rag(self):
+        
+        qclient = self.cat.memory.vectors.vector_db
+        self.confirm_collection = "user_confirm"
+        
+        # Get embedder size
+        embedder_size = len(self.cat.embedder.embed_query("hello world"))
+
+        # Create collection
+        qclient.recreate_collection(
+            collection_name=self.confirm_collection,
+            vectors_config=VectorParams(
+                size=embedder_size, 
+                distance=Distance.COSINE
+            )
+        )
+
+        # Load context
+        examples = [ 
+            {"message": "yes, they are correct",   "label": "True" },
+            {"message": "ok, they are fine",       "label": "True" },
+            {"message": "they seem right",         "label": "True" },
+            {"message": "I think so",              "label": "True" },
+            {"message": "no, we are not there",    "label": "False"},
+            {"message": "wrong",                   "label": "False"},
+            {"message": "they are not correct",    "label": "False"},
+            {"message": "I don't think so",        "label": "False"}
+        ]
+
+        # Insert training data into index
+        points = []
+        for i, data in enumerate(examples):
+            message = data["message"]
+            label = data["label"]
+            vector = self.cat.embedder.embed_query(message)
+            points.append(PointStruct(id=i, vector=vector, payload={"label":label}))
+            
+        operation_info = qclient.upsert(
+            collection_name=self.confirm_collection,
+            wait=True,
+            points=points,
+        )
+        #print(operation_info)
+
+
+    # Check if user confirm the model data in RAG mode
+    def check_user_confirm_rag(self) -> bool:
+        
+        # Get user message vector
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        user_message_vector = self.cat.embedder.embed_query(user_message)
+        
+        # Search for the vector most similar to the user message in the vector database
+        qclient = self.cat.memory.vectors.vector_db
+        search_results = qclient.search(
+            self.confirm_collection, 
+            user_message_vector, 
+            with_payload=True, 
+            limit=1
+        )
+        print(f"search_results: {search_results}")
+        most_similar_label = search_results[0].payload["label"]
+        
+        # If the nearest distance is less than the threshold, exit intent
+        return most_similar_label == "True"
+    
+
+    ####################################
+    ############ UPDATE JSON ###########
+    ####################################
+
+    # Updates the form with the information extracted from the user's response
+    # (Return True if the model is updated)
+    def update(self):
+
+        # User message to json details
+        json_details = self.user_message_to_json()
+        if json_details is None:
+            return False
+        
+        # model merge with details
+        print("json_details", json_details)
+        new_model = self.model_merge(json_details)
+        print("new_model", new_model)
+        
+        # Check if there is no information in the new_model that can update the form
+        if new_model == self.model.model_dump():
+            return False
+
+        # Validate new_details
+        self.model_validate(new_model)
+                    
+        # If there are errors, return false
+        if len(self.errors) > 0:
+            return False
+
+        # Overrides the current model with the new_model
+        self.model = self.model.model_construct(**new_model)
+
+        log.critical(f'MODEL : {self.model.model_dump()}')
+        return True
+
+
+    # User message to json
+    def user_message_to_json(self): 
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+
+        # Extract json detail from user message, based on the json_extractor setting
+
+        if settings["json_extractor"] == "langchain":
+            json_details = self._extract_info_by_langchain()
+                
+        if settings["json_extractor"] == "kor":
+            json_details = self._extract_info_by_kor()
+                    
+        if settings["json_extractor"] == "guardrails":
+            json_details = self._extract_info_by_guardrails()
+                        
+        if settings["json_extractor"] == "from examples":
+            json_details = self._extract_info_from_examples_by_rag()
+
+        return json_details
+
+
+    # Model merge (actual model + details = new model)
+    def model_merge(self, json_details):
+        # Clean json details
+        json_details = {key: value for key, value in json_details.items() if value not in [None, '', 'None', 'null', 'lower-case']}
+
+        # update form
+        new_model = self.model.model_dump() | json_details
+        
+        # Clean json new_details
+        new_model = {key: value for key, value in new_model.items() if value not in [None]}        
+        return new_model
+
+
+    # Validate model
+    def model_validate(self, model):
+        self.ask_for = []
+        self.errors  = []
+
+        # Reset state to INVALID
+        self.state = CFormState.INVALID
+                
         try:
-            # update form from user response
-            self.model_is_updated = self.update_from_user_response()
-            
-            # if the form was updated, save it in working memory
-            if self.model_is_updated is True:
-                self.cat.working_memory[ self.key] = self
-            
-            # (Cat's breath) Check if it's time to skip the conversation step
-            if self._check_skip_conversation_step(): 
-                log.critical(f'> SKIP CONVERSATION STEP {self.key}')
-                raise Exception(f"Skip conversation step {self.key}")
+            # Pydantic model validate
+            self.model.model_validate(model)
+
+            # If model is valid change state to VALID
+            self.state = CFormState.VALID
 
         except ValidationError as e:
-            # If there was a validation problem, return the error message
-            message = e.errors()[0]["msg"]
-            response = self.cat.llm(message)
-            log.critical('> RETURN ERROR')
-            return response
+            
+            # Collect ask_for and errors messages
+            for error_message in e.errors():
+                if error_message['type'] == 'missing':
+                    self.ask_for.append(error_message['loc'][0])
+                else:
+                    self.errors.append(error_message["msg"])
 
-        log.warning(f"state:{self.state}, is completed:{self.is_completed()}")
 
-        # Checks whether it should execute the action
-        if self.state == CFormState.ASK_SUMMARY:
-            if self.check_confirm():
-                
-                # Execute action
-                log.critical(f'> EXECUTE ACTION {self.key}')
-                return self._execute_action()
+    #############################################
+    ############ USER MESSAGE TO JSON ###########
+    #############################################
+
+    # Extracted new informations from the user's response (by pydantic langchain - pydantic library)
+    def _extract_info_by_langchain(self):
+        parser = PydanticOutputParser(pydantic_object=type(self.model))
+        prompt = PromptTemplate(
+            template="Answer the user query.\n{format_instructions}\n{query}\n",
+            input_variables=["query"],
+            partial_variables={"format_instructions": parser.get_format_instructions()},
+        )
+        log.debug(f'get_format_instructions: {parser.get_format_instructions()}')
         
-        # Checks whether the form is completed
-        if self.state in [CFormState.ASK_INFORMATIONS, CFormState.STARTED] and self.is_completed():
-            
-            # Get settings
-            settings = self.cat.mad_hatter.get_plugin().load_settings()
-            
-            # If ask_confirm is true, show summary and ask confirmation
-            if settings["ask_confirm"] is True:
-                
-                # Show summary
-                response = self.show_summary(self.cat)
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        _input = prompt.format_prompt(query=user_message)
+        output = self.cat.llm(_input.to_string())
+        log.debug(f"output: {output}")
 
-                log.critical('> SHOW SUMMARY')
-                return response
-            
-            else: #else, execute action
-                log.critical(f'> EXECUTE ACTION {self.key}')
-                return self._execute_action()
+        user_response_json = json.loads(output)
+        log.debug(f'user response json: {user_response_json}')
+        return user_response_json
+    
 
-        # If the form is not completed, ask for missing information
-        self.state  = CFormState.ASK_INFORMATIONS
-        response = self.ask_missing_information()
-        log.critical(f'> ASK MISSING INFORMATIONS {self.key}')
-        return response
-   
+    # Extracted new informations from the user's response (by kor library)
+    def _extract_info_by_kor(self):
 
-    # Execute final form action
-    def _execute_action(self):
+        # Get user message
+        user_message = self.cat.working_memory["user_message_json"]["text"]
         
-        # CForm Hook - execute_action(model, cat)
-        if hasattr(type(self.model), 'execute_action'):
-            result = type(self.model).execute_action(self.model, self.cat)
+        # Get schema and validator from Pydantic model
+        schema, validator = from_pydantic(self.model_class)   
+        chain = create_extraction_chain(
+            self.cat._llm, 
+            schema, 
+            encoder_or_encoder_class="json", 
+            validator=validator
+        )
+        log.debug(f"prompt: {chain.prompt.to_string(user_message)}")
+        
+        output = chain.run(user_message)["validated_data"]
+        try:
+            user_response_json = output.dict()
+            log.debug(f'user response json: {user_response_json}')
+            return user_response_json
+        except Exception  as e:
+            log.debug(f"An error occurred: {e}")
+            return None
+    
+
+    # Extracted new informations from the user's response (by guardrails library)
+    def _extract_info_by_guardrails(self):
+        
+        # Get user message
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        
+        # Prompt
+        prompt = """
+        Given the following client message, please extract information about his form.
+
+        ${message}
+
+        ${gr.complete_json_suffix_v2}
+        """
+        
+        # Parse message
+        guard = gd.Guard.from_pydantic(output_class=self.model_class, prompt=prompt)
+        gd_result = guard(self.cat._llm, prompt_params={"message": user_message})
+        print(f'gd_result: {gd_result}')
+
+        # If result is valid, return result
+        if gd_result.validation_passed is True:
+            result = json.loads(gd_result.raw_llm_output)
+            print(f'_extract_info: {user_message} -> {result}')
+            return result
+        
+        return {}
+
+    # Extracted new informations from the user's response (from examples, by rag)
+    def _extract_info_from_examples_by_rag(self):
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        
+        prompt = "Update the following JSON with information extracted from the Sentence:\n\n"
+        
+        if self.prompt_tpl_update:
+            prompt += self.prompt_tpl_update.format(
+                user_message = user_message, 
+                model = self.model.model_dump_json()
+            )
         else:
-            result = self.model.json()
+            prompt += f"\
+                Sentence: {user_message}\n\
+                JSON:{json.dumps(self.model.dict(), indent=4)}\n\
+                Updated JSON:"
+            
+        json_str = self.cat.llm(prompt)
+        print(f"json after parser: {json_str}")
+        user_response_json = json.loads(json_str)
+        return user_response_json
+    
+    
+    # Load dialog examples by RAG
+    def load_dialog_examples_by_rag(self):    
+        '''
+        # Examples json format
+        self.model.examples = [
+            {
+                "user_message": "I want to order a pizza",
+                "model_before": "{{}}",
+                "model_after":  "{{}}",
+                "validation":   "information to ask: pizza type, address, phone",
+                "response":     "What kind of pizza do you want?"
+            },
+            {
+                "user_message": "I live in Via Roma 1",
+                "model_before": "{{\"pizza_type\":\"Margherita\"}}",
+                "model_after":  "{{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}}",
+                "validation":   "information to ask: phone",
+                "response":     "Could you give me your phone number?"
+            },
+            {
+                "user_message": "My phone is: 123123123",
+                "model_before": "{{\"pizza_type\":\"Diavola\"}}",
+                "model_after":  "{{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}}",
+                "validation":   "information to ask: address",
+                "response":     "Could you give me your delivery address?"
+            },
+            {
+                "user_message": "I want a test pizza",
+                "model_before": "{{\"phone\":\"123123123\"}}",
+                "model_after":  "{{\"pizza_type\":\"test\", \"phone\":\"123123123\"}}",
+                "validation":   "there is an error: pizza_type test is not present in the menu",
+                "response":     "Pizza type is not a valid pizza"
+            }
+        ]
+        '''
+
+        # Get examples
+        examples = self.model.examples(self.cat)
+        #print(f"examples: {examples}")
+
+        # If no examples are available, return
+        if not examples:
+            return
         
-        del self.cat.working_memory[self.key]
+        # Create example selector
+        example_selector = SemanticSimilarityExampleSelector.from_examples(
+            examples, self.cat.embedder, Qdrant, k=1, location=':memory:'
+        )
 
-        return result
+        # Create example_update_model_prompt for formatting output
+        example_update_model_prompt = PromptTemplate(
+            input_variables = ["user_message", "model_before", "model_after"],
+            template = "User Message: {user_message}\nModel: {model_before}\nUpdated Model: {model_after}"
+        )
+        #print(f"example_update_model_prompt:\n{example_update_model_prompt.format(**examples[1])}\n\n")
+
+        # Create promptTemplate from examples_selector and example_update_model_prompt
+        self.prompt_tpl_update = FewShotPromptTemplate(
+            example_selector = example_selector,
+            example_prompt   = example_update_model_prompt,
+            suffix = "User Message: {user_message}\nModel: {model}\nUpdated Model: ",
+            input_variables = ["user_message", "model"]
+        )
+        #print(f"prompt_tpl_update: {self.prompt_tpl_update.format(user_message='user question', model=self.model.model_dump_json())}\n\n")
+
+        # Create example_response_prompt for formatting output
+        example_response_prompt = PromptTemplate(
+            input_variables = ["validation", "response"],
+            template = "Message: {validation}\nResponse: {response}"
+        )
+        #print(f"example_response_prompt:\n{example_response_prompt.format(**examples[1])}\n\n")
+
+        # Create promptTemplate from examples_selector and example_response_prompt
+        self.prompt_tpl_response = FewShotPromptTemplate(
+            example_selector = example_selector,
+            example_prompt   = example_response_prompt,
+            suffix = "Message: {validation}\nResponse: ",
+            input_variables = ["validation"]
+        )
+        #print(f"prompt_tpl_response: {self.prompt_tpl_response.format(validation='pydantic validation result')}\n\n")
 
 
-    # Check if the dialog is active
-    def _check_is_active(self):
-        is_active = True
-        if self.state == CFormState.STOPPED:
-            is_active = False
-        return is_active
+    ####################################
+    ######### EXECUTE DIALOGUE #########
+    ####################################
+    
+    # Execute the dialogue step
+    def dialogue_action(self):
+        log.critical(f"dialogue_action (state: {self.state})")
+
+        #self.cat.working_memory["episodic_memories"] = []
+
+        # Get settings
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+        
+        # If the state is INVALID or UPDATE, execute model update (and change state based on validation result)
+        if self.state in [CFormState.INVALID, CFormState.UPDATE]:
+            self.update()
+            log.warning("> UPDATE")
+
+        # If state is VALID, ask confirm (or execute action directly)
+        if self.state in [CFormState.VALID]:
+            if settings["ask_confirm"] is False:
+                log.warning("> EXECUTE ACTION")
+                del self.cat.working_memory[self.key]   
+                return self.model.execute_action(self.cat)
+            else:
+                self.state = CFormState.WAIT_CONFIRM
+                log.warning("> STATE=WAIT_CONFIRM")
+                return None
+            
+        # If state is WAIT_CONFIRM, check user confirm response..
+        if self.state in [CFormState.WAIT_CONFIRM]:
+            if self.check_user_confirm():
+                log.warning("> EXECUTE ACTION")
+                del self.cat.working_memory[self.key]   
+                return self.model.execute_action(self.cat)
+            else:
+                log.warning("> STATE=UPDATE")
+                self.state = CFormState.UPDATE
+                return None
+
+        return None
     
 
-    # (Cat's breath) Check if should skip conversation step
-    def _check_skip_conversation_step(self):
+    # execute dialog prompt prefix
+    def dialogue_prefix(self, prompt_prefix):
+        log.critical(f"dialogue_prefix (state: {self.state})")
 
-        # If the model was updated, don't skip conversation step
-        if self.model_is_updated is True:
-            return False
+        # Get class fields descriptions
+        class_descriptions = []
+        for key, value in self.model_class.model_fields.items():
+            class_descriptions.append(f"{key}: {value.description}")
         
-        # If the state is starded, don't skip conversation step
-        if self.state == CFormState.STARTED:
-            return False
+        # Formatted texts
+        formatted_model_class = ", ".join(class_descriptions)
+        formatted_model       = ", ".join([f"{key}: {value}" for key, value in self.model.model_dump().items()])
+        formatted_ask_for     = ", ".join(self.ask_for) if self.ask_for else None
+        formatted_errors      = ", ".join(self.errors) if self.errors else None
         
-        # If the state is summary, don't skip conversation step
-        if self.state == CFormState.ASK_SUMMARY:
-            return False
+        formatted_validation  = ""
+        if self.ask_for:
+            formatted_validation  = f"information to ask: {formatted_ask_for}"
+        if self.errors:
+            formatted_validation  = f"there is an error: {formatted_errors}"
 
-        # If they aren't called tools, don't skip conversation step
-        num_called_tools = len(self.cat.working_memory["procedural_memories"])
-        if num_called_tools == 0:
-            return False
-        
-        # If return only promp, don't skip conversation step
-        if self.return_only_prompt is True:
-            return False
+        prompt = prompt_prefix
+
+        # If state is INVALID ask missing informations..
+        if self.state in [CFormState.INVALID]:
+            # PROMPT ASK MISSING INFO
+            prompt = \
+                f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have currently collected the following values:\n\
+                {formatted_model}\n\n"
+
+            if self.errors:
+                prompt += \
+                    f"and in the validation you got the following errors:\n\
+                    {formatted_errors}\n\n"
+
+            if self.ask_for:    
+                prompt += \
+                    f"and the following fields are still missing:\n\
+                    {formatted_ask_for}\n\n"
+
+            prompt += \
+                f"ask the user to give you the necessary information."
+            
+            if self.prompt_tpl_response:
+                prompt += "\n\n" + self.prompt_tpl_response.format(validation = formatted_validation)
+                
+        # If state is WAIT_CONFIRM (previous VALID), show summary and ask the user for confirmation..
+        if self.state in [CFormState.WAIT_CONFIRM]:
+            # PROMPT SHOW SUMMARY
+            prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have collected all the available data:\n\
+                {formatted_model}\n\n\
+                show the user the data and ask them to confirm that it is correct.\n"
+
+        # If state is UPDATE asks the user to change some information present in the model..
+        if self.state in [CFormState.UPDATE]:
+            # PROMPT ASK CHANGE INFO
+            prompt = f"Your goal is to have the user fill out a form containing the following fields:\n\
+                {formatted_model_class}\n\n\
+                you have collected all the available data:\n\
+                {formatted_model}\n\n\
+                show the user the data and ask him to provide the updated data.\n"
+
+
+        # Print prompt prefix
+        print("*"*10)
+        print("PROMPT PREFIX:")
+        print(prompt)
+        print("*"*10)
+
+        # Return prompt
+        return prompt
+
+
+    # execute dialog direct (combines the previous two methods)
+    def dialogue_direct(self):
+        response = self.dialogue_action()
+        if not response:
+            user_message = self.cat.working_memory["user_message_json"]["text"]
+            prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
+            prompt_prefix = self.dialogue_prefix(prompt_prefix)
+            prompt = f"{prompt_prefix}\n\n\
+                User message: {user_message}\n\
+                AI:"
+            response = self.cat.llm(prompt)
+        return response
     
-        # Else, skip conversation step
-        return True
+
+    # Execute the entire memory chain
+    def execute_memory_chain(self):
+        agent_input   = self.cat.agent_manager.format_agent_input(self.cat.working_memory)
+        agent_input   = self.cat.mad_hatter.execute_hook("before_agent_starts", agent_input, cat=self.cat)
+        agent_input["tools_output"] = ""
+        prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
+        prompt_prefix = self.dialogue_prefix(prompt_prefix)
+        prompt_suffix = self.cat.mad_hatter.execute_hook("agent_prompt_suffix", MAIN_PROMPT_SUFFIX, cat=self.cat)
+        response = self.cat.agent_manager.execute_memory_chain(agent_input, prompt_prefix, prompt_suffix, self.cat)
+        return response.get("output")
+    
+
+############################################################
+######### HOOKS FOR AUTOMATIC HANDLE CONVERSATION ##########
+############################################################
+
+@hook
+def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
+    settings = cat.mad_hatter.get_plugin().load_settings()
+    if settings["auto_handle_conversation"] is True:
+        cform = CForm.get_active_form(cat)
+        if cform:
+            return cform.model.dialogue_action(fast_reply, cat)
+    return fast_reply
+
+@hook
+def agent_prompt_prefix(prefix, cat) -> str:
+    settings = cat.mad_hatter.get_plugin().load_settings()
+    if settings["auto_handle_conversation"] is True:
+        cform = CForm.get_active_form(cat)
+        if cform:
+            return cform.model.dialogue_prefix(prefix, cat)
+    return prefix

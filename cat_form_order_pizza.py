@@ -105,9 +105,9 @@ def ask_menu(input, cat):
 # Order pizza handle conversation
 @hook
 def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
-    return PizzaOrder.dialogue_action(fast_reply, cat)
+    return PizzaOrder.dialogue(fast_reply, cat)
 
 @hook
 def agent_prompt_prefix(prefix, cat) -> str:
-    return PizzaOrder.dialogue_prefix(prefix, cat)
+    return PizzaOrder.dialogue_prompt(prefix, cat)
 '''

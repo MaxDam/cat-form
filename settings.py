@@ -13,13 +13,17 @@ class MySettings(BaseModel):
         title="json extractor",
         default="guardrails"
     )
+    strict: bool = Field(
+        title="strict",
+        default=False
+    )
     ask_confirm: bool = Field(
         title="ask confirm",
         default=True
     )
-    auto_handle_conversation: bool = Field(
-        title="auto handle conversation",
-        default=True
+    use_rag_confirm: bool = Field(
+        title="use rag for confirm",
+        default=False
     )
     pizza_order_examples: str = Field(
         title="pizza order examples",
@@ -31,7 +35,11 @@ class MySettings(BaseModel):
         default="[]",
         extra={"type": "TextArea"}
     )
-
+    auto_handle_conversation: bool = Field(
+        title="auto handle conversation",
+        default=True
+    )
+    
 @plugin
 def settings_schema():
     return MySettings.schema()

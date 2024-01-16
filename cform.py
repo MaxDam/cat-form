@@ -39,11 +39,10 @@ class CBaseModel(BaseModel):
             cform = CForm(cls, key, cat)
             cat.working_memory[key] = cform
             cform.check_active_form()
-            response = cform.dialogue_action()
+            response = cform.dialogue()
             return response
         cform = cat.working_memory[key]
         cform.check_active_form()
-        #response = cform.dialogue_direct()
         response = cform.execute_memory_chain()
         return response
 
@@ -59,23 +58,23 @@ class CBaseModel(BaseModel):
     # Execute the dialogue step
     # (typically inside the agent_fast_reply hook)
     @classmethod
-    def dialogue_action(cls, fast_reply, cat):
+    def dialogue(cls, fast_reply, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
-            response = cform.dialogue_action()
+            response = cform.dialogue()
             if response:
                 return { "output": response }
         return
     
-    # Execute the dialogue step
+    # Execute the dialogue_prompt step
     # (typically inside the agent_prompt_prefix hook)
     @classmethod
-    def dialogue_prefix(cls, prefix, cat):
+    def dialogue_prompt(cls, prefix, cat):
         key = cls.__name__
         if key in cat.working_memory.keys():
             cform = cat.working_memory[key]
-            return cform.dialogue_prefix(prefix)
+            return cform.dialogue_prompt(prefix)
         return prefix
 
 
@@ -115,8 +114,11 @@ class CForm():
         self.prompt_tpl_update   = None
         self.prompt_tpl_response = None
         self.load_dialog_examples_by_rag()
-        #self.load_confirm_examples_by_rag()
+        self.load_confirm_examples_by_rag()
+        self.load_exit_intent_examples_by_rag()
         
+        self.language = self.get_language()
+
 
     ####################################
     ######## HANDLE ACTIVE FORM ########
@@ -145,6 +147,32 @@ class CForm():
         return None
 
 
+    ##########################
+    ######## LANGUAGE ########
+    ##########################
+
+    # Get language
+    def get_language(self):
+
+        # Get user message
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+
+        # Prompt
+        language_prompt = f"Identify the language of the following message \
+        and return only the language of the message, without other text.\n\
+        If you can't locate it, return 'English'.\n\
+        Message examples:\n\
+        'Ciao, come stai?', returns: 'Italian',\n\
+        'How do you go?', returns 'English',\n\
+        'Bonjour a tous', returns 'French'\n\n\
+        Message: '{user_message}'"
+        
+        # Queries the LLM and check if user is agree or not
+        response = self.cat.llm(language_prompt)
+        log.critical(f'Language: {response}')
+        return response
+    
+
     ####################################
     ######## CHECK USER CONFIRM ########
     ####################################
@@ -152,6 +180,11 @@ class CForm():
     # Check user confirm the form data
     def check_user_confirm(self) -> bool:
         
+        # Decides whether to use rag for user confirmation
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+        if settings["use_rag_confirm"] is True:
+            return self.check_user_confirm_rag()
+
         # Get user message
         user_message = self.cat.working_memory["user_message_json"]["text"]
         
@@ -246,6 +279,75 @@ class CForm():
         # If the nearest distance is less than the threshold, exit intent
         return most_similar_label == "True"
     
+
+    ###################################
+    ######## CHECK EXIT INTENT ########
+    ###################################
+
+    # Load exit intent examples
+    def load_exit_intent_examples_by_rag(self):
+        
+        qclient = self.cat.memory.vectors.vector_db
+        self.exit_intent_collection = "exit_intent"
+        
+        # Get embedder size
+        embedder_size = len(self.cat.embedder.embed_query("hello world"))
+
+        # Create collection
+        qclient.recreate_collection(
+            collection_name=self.exit_intent_collection,
+            vectors_config=VectorParams(
+                size=embedder_size, 
+                distance=Distance.COSINE
+            )
+        )
+        
+        # Load context
+        examples = [ 
+            {"message": "I would like to exit the module"                   },
+            {"message": "I no longer want to continue filling out the form" },
+            {"message": "You go out"                                        },
+            {"message": "Return to normal conversation"                     },
+            {"message": "Stop and go out"                                   }
+        ]
+
+        # Insert training data into index
+        points = []
+        for i, data in enumerate(examples):
+            message = data["message"]
+            vector = self.cat.embedder.embed_query(message)
+            points.append(PointStruct(id=i, vector=vector, payload={}))
+            
+        operation_info = qclient.upsert(
+            collection_name=self.exit_intent_collection,
+            wait=True,
+            points=points,
+        )
+        #print(operation_info)
+
+
+    # Check if the user wants to exit the intent
+    def check_exit_intent_rag(self) -> bool:
+        
+        # Get user message vector
+        user_message = self.cat.working_memory["user_message_json"]["text"]
+        user_message_vector = self.cat.embedder.embed_query(user_message)
+        
+        # Search for the vector most similar to the user message in the vector database and get distance
+        qclient = self.cat.memory.vectors.vector_db
+        search_results = qclient.search(
+            self.exit_intent_collection, 
+            user_message_vector, 
+            with_payload=False, 
+            limit=1
+        )
+        print(f"search_results: {search_results}")
+        nearest_score = search_results[0].score
+        
+        # If the nearest score is less than the threshold, exit intent
+        threshold = 0.9
+        return nearest_score >= threshold
+
 
     ####################################
     ############ UPDATE JSON ###########
@@ -530,6 +632,18 @@ class CForm():
     ####################################
     
     # Execute the dialogue step
+    def dialogue(self):
+        # Get settings
+        settings = self.cat.mad_hatter.get_plugin().load_settings()
+
+        # Based on the strict setting it decides whether to use a direct dialogue or involve the memory chain 
+        if settings["strict"] is True:
+            return self.dialogue_direct()
+        else:
+            return self.dialogue_action()
+
+
+    # Execute the dialogue action
     def dialogue_action(self):
         log.critical(f"dialogue_action (state: {self.state})")
 
@@ -569,8 +683,8 @@ class CForm():
     
 
     # execute dialog prompt prefix
-    def dialogue_prefix(self, prompt_prefix):
-        log.critical(f"dialogue_prefix (state: {self.state})")
+    def dialogue_prompt(self, prompt_prefix):
+        log.critical(f"dialogue_prompt (state: {self.state})")
 
         # Get class fields descriptions
         class_descriptions = []
@@ -636,10 +750,7 @@ class CForm():
 
 
         # Print prompt prefix
-        print("*"*10)
-        print("PROMPT PREFIX:")
-        print(prompt)
-        print("*"*10)
+        print("*"*10, f"\nPROMPT PREFIX:\n{prompt}\n", "*"*10)
 
         # Return prompt
         return prompt
@@ -647,25 +758,41 @@ class CForm():
 
     # execute dialog direct (combines the previous two methods)
     def dialogue_direct(self):
+
+        # check exit intent
+        if self.check_exit_intent_rag():
+            log.critical(f'> Exit Intent {self.key}')
+            del self.cat.working_memory[self.key]
+            return None
+    
+        # Get dialog action
         response = self.dialogue_action()
         if not response:
+            # Build prompt
             user_message = self.cat.working_memory["user_message_json"]["text"]
             prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
-            prompt_prefix = self.dialogue_prefix(prompt_prefix)
+            prompt_prefix = self.dialogue_prompt(prompt_prefix)
+            prompt_prefix += f"\nUse the {self.language} language to answer the question.\n\n"
             prompt = f"{prompt_prefix}\n\n\
                 User message: {user_message}\n\
                 AI:"
+            
+            # Print prompt
+            print("*"*10, f"\nPROMPT:\n{prompt}\n", "*"*10)
+
+            # Call LLM
             response = self.cat.llm(prompt)
+
         return response
     
-
+    
     # Execute the entire memory chain
     def execute_memory_chain(self):
         agent_input   = self.cat.agent_manager.format_agent_input(self.cat.working_memory)
         agent_input   = self.cat.mad_hatter.execute_hook("before_agent_starts", agent_input, cat=self.cat)
         agent_input["tools_output"] = ""
         prompt_prefix = self.cat.mad_hatter.execute_hook("agent_prompt_prefix", MAIN_PROMPT_PREFIX, cat=self.cat)
-        prompt_prefix = self.dialogue_prefix(prompt_prefix)
+        prompt_prefix = self.dialogue_prompt(prompt_prefix)
         prompt_suffix = self.cat.mad_hatter.execute_hook("agent_prompt_suffix", MAIN_PROMPT_SUFFIX, cat=self.cat)
         response = self.cat.agent_manager.execute_memory_chain(agent_input, prompt_prefix, prompt_suffix, self.cat)
         return response.get("output")
@@ -681,7 +808,7 @@ def agent_fast_reply(fast_reply: Dict, cat) -> Dict:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            return cform.model.dialogue_action(fast_reply, cat)
+            return cform.model.dialogue(fast_reply, cat)
     return fast_reply
 
 @hook
@@ -690,5 +817,5 @@ def agent_prompt_prefix(prefix, cat) -> str:
     if settings["auto_handle_conversation"] is True:
         cform = CForm.get_active_form(cat)
         if cform:
-            return cform.model.dialogue_prefix(prefix, cat)
+            return cform.model.dialogue_prompt(prefix, cat)
     return prefix

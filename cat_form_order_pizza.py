@@ -2,10 +2,14 @@ from cat.mad_hatter.decorators import tool, hook
 from pydantic import Field, field_validator
 from cat.log import log
 from typing import Dict
-from .cform import CBaseModel
-import random
+from .cform import CForm, CBaseModel
 import json
+import random
 
+menu = [ "Margherita", "Romana", "Quattro Formaggi", "Capricciosa", "Bufalina", "Diavola"]
+    
+
+# Declare model class
 class PizzaOrder(CBaseModel):
     
     pizza_type: str = Field(
@@ -33,7 +37,6 @@ class PizzaOrder(CBaseModel):
             ("For any communications 567493423", "567493423")
         ])
 
-    '''
     @field_validator("pizza_type")
     @classmethod
     def validate_pizza_type(cls, pizza_type: str):
@@ -42,7 +45,6 @@ class PizzaOrder(CBaseModel):
             raise ValueError(f"pizza_type {pizza_type} is not present in the menu")
 
         return
-    '''
 
     def examples(self, cat):
         settings = cat.mad_hatter.get_plugin().load_settings()
@@ -71,13 +73,37 @@ class PizzaOrder(CBaseModel):
         return result
 
 
+# Extend CForm class
+class MyForm(CForm):
+    def __init__(self, model_class, key, cat):
+        print("MyForm constructor")
+        super().__init__(model_class, key, cat)
+    
+    def check_user_confirm(self) -> bool:
+        print("MyForm check_user_confirm")
+        return super().check_user_confirm() 
+    
+    def user_message_to_json(self):
+        print("MyForm user_message_to_json")
+        return super().user_message_to_json()
+    
+    def model_merge(self, json_details):
+        print("MyForm model_merge")
+        return super().model_merge(json_details)
+        
+    def model_validate(self, model):
+        print("MyForm model_validate")
+        return super().model_validate(model)
+    
+
+
 # Order pizza start intent
 @tool(return_direct=True)
 def start_order_pizza_intent(input, cat):
     """I would like to order a pizza
     I'll take a Margherita pizza"""
     log.critical("INTENT ORDER PIZZA START")
-    return PizzaOrder.start(cat)
+    return PizzaOrder.start(cat, form=MyForm)
 
  
 # Order pizza stop intent
@@ -89,14 +115,12 @@ def stop_order_pizza_intent(input, cat):
     log.critical("INTENT ORDER PIZZA STOP")
     return PizzaOrder.stop(cat)
 
-
 # Get pizza menu
 @tool()
 def ask_menu(input, cat):
     """What is on the menu?
     Which types of pizza do you have?"""
     log.critical("INTENT ORDER PIZZA MENU")
-    menu = [ "Margherita", "Romana", "Quattro Formaggi", "Capricciosa", "Bufalina", "Diavola"]
     response = "The available pizzas are the following:\n" + ", ".join(menu)
     return response
 

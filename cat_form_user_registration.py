@@ -1,8 +1,8 @@
 from cat.mad_hatter.decorators import tool, hook
+from pydantic import Field, field_validator
 from cat.log import log
 from typing import Dict
-from .cform import CBaseModel
-from pydantic import Field
+from .cform import CForm, CBaseModel
 import json
 
 

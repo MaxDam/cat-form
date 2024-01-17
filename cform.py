@@ -19,75 +19,7 @@ from langchain.prompts.example_selector import SemanticSimilarityExampleSelector
 from langchain.vectorstores import Qdrant
 
 
-# Class Conversational Base Model
-class CBaseModel(BaseModel):
-    
-    # Get CForm instance
-    @classmethod
-    def get(cls, cat):
-        key = cls.__name__
-        if key in cat.working_memory.keys():
-            return cat.working_memory[key]
-        return None
-    
-    # Start conversation
-    # (typically inside the tool that starts the intent)
-    @classmethod
-    def start(cls, cat):
-        key = cls.__name__
-        if key not in cat.working_memory.keys():
-            cform = CForm(cls, key, cat)
-            cat.working_memory[key] = cform
-            cform.check_active_form()
-            response = cform.dialogue()
-            return response
-        cform = cat.working_memory[key]
-        cform.check_active_form()
-        response = cform.execute_memory_chain()
-        return response
-
-    # Stop conversation
-    # (typically inside the tool that stops the intent)
-    @classmethod
-    def stop(cls, cat):
-        key = cls.__name__
-        if key in cat.working_memory.keys():
-            del cat.working_memory[key]
-        return
-
-    # Execute the dialogue step
-    # (typically inside the agent_fast_reply hook)
-    @classmethod
-    def dialogue(cls, fast_reply, cat):
-        key = cls.__name__
-        if key in cat.working_memory.keys():
-            cform = cat.working_memory[key]
-            response = cform.dialogue()
-            if response:
-                return { "output": response }
-        return
-    
-    # Execute the dialogue_prompt step
-    # (typically inside the agent_prompt_prefix hook)
-    @classmethod
-    def dialogue_prompt(cls, prefix, cat):
-        key = cls.__name__
-        if key in cat.working_memory.keys():
-            cform = cat.working_memory[key]
-            return cform.dialogue_prompt(prefix)
-        return prefix
-
-
-    # METHODS TO OVERRIDE
-    
-    # Execute final form action
-    def execute_action(self, cat):
-        return self.model_dump_json(indent=4)
-    
-    # Dialog examples
-    def examples(self, cat):
-        return []
-    
+   
 
 # Conversational Form State
 class CFormState(Enum):
@@ -797,6 +729,80 @@ class CForm():
         response = self.cat.agent_manager.execute_memory_chain(agent_input, prompt_prefix, prompt_suffix, self.cat)
         return response.get("output")
     
+
+#####################################
+######### CLASS BASE MODEL ##########
+#####################################
+
+# Class Conversational Base Model
+class CBaseModel(BaseModel):
+    
+    # Get CForm instance
+    @classmethod
+    def get(cls, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            return cat.working_memory[key]
+        return None
+    
+    # Start conversation
+    # (typically inside the tool that starts the intent)
+    @classmethod
+    def start(cls, cat, form=CForm):
+        key = cls.__name__
+        if key not in cat.working_memory.keys():
+            cform = form(cls, key, cat)
+            cat.working_memory[key] = cform
+            cform.check_active_form()
+            response = cform.dialogue()
+            return response
+        cform = cat.working_memory[key]
+        cform.check_active_form()
+        response = cform.execute_memory_chain()
+        return response
+
+    # Stop conversation
+    # (typically inside the tool that stops the intent)
+    @classmethod
+    def stop(cls, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            del cat.working_memory[key]
+        return
+
+    # Execute the dialogue step
+    # (typically inside the agent_fast_reply hook)
+    @classmethod
+    def dialogue(cls, fast_reply, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            cform = cat.working_memory[key]
+            response = cform.dialogue()
+            if response:
+                return { "output": response }
+        return
+    
+    # Execute the dialogue_prompt step
+    # (typically inside the agent_prompt_prefix hook)
+    @classmethod
+    def dialogue_prompt(cls, prefix, cat):
+        key = cls.__name__
+        if key in cat.working_memory.keys():
+            cform = cat.working_memory[key]
+            return cform.dialogue_prompt(prefix)
+        return prefix
+
+
+    # METHODS TO OVERRIDE
+    
+    # Execute final form action
+    def execute_action(self, cat):
+        return self.model_dump_json(indent=4)
+    
+    # Dialog examples
+    def examples(self, cat):
+        return []
+ 
 
 ############################################################
 ######### HOOKS FOR AUTOMATIC HANDLE CONVERSATION ##########

@@ -68,3 +68,37 @@ def agent_prompt_prefix(prefix, cat) -> str:
 
 ## Flow
 <img src="./schema/cat-form.jpg" width=400>
+
+
+### if you also want to extend the standard behavior of the module you have to do it this way
+```python
+# Extend CForm class
+class MyForm(CForm):
+    def __init__(self, model_class, key, cat):
+        print("MyForm constructor")
+        super().__init__(model_class, key, cat)
+    
+    def check_user_confirm(self) -> bool:
+        print("MyForm check_user_confirm")
+        return super().check_user_confirm() 
+    
+    def user_message_to_json(self):
+        print("MyForm user_message_to_json")
+        return super().user_message_to_json()
+    
+    def model_merge(self, json_details):
+        print("MyForm model_merge")
+        return super().model_merge(json_details)
+        
+    def model_validate(self, model):
+        print("MyForm model_validate")
+        return super().model_validate(model)
+
+    #...
+
+
+@tool(return_direct=True)
+def intent_start(input, cat):
+    ''' <docString> '''
+    return PizzaOrder.start(cat, form=MyForm)
+```

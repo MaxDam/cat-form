@@ -1,0 +1,30 @@
+[
+	{
+		"user_message": "I want to order a pizza",
+		"model_before": "{{}}",
+		"model_after":  "{{}}",
+		"validation":   "information to ask: pizza type, address, phone",
+		"response":     "What kind of pizza do you want?"
+	},
+	{
+		"user_message": "I live in Via Roma 1",
+		"model_before": "{{\"pizza_type\":\"Margherita\"}}",
+		"model_after":  "{{\"pizza_type\":\"Margherita\",\"address\":\"Via Roma 1\"}}",
+		"validation":   "information to ask: phone",
+		"response":     "Could you give me your phone number?"
+	},
+	{
+		"user_message": "My phone is: 123123123",
+		"model_before": "{{\"pizza_type\":\"Diavola\"}}",
+		"model_after":  "{{\"pizza_type\":\"Diavola\",\"phone\":\"123123123\"}}",
+		"validation":   "information to ask: address",
+		"response":     "Could you give me your delivery address?"
+	},
+	{
+		"user_message": "I want a test pizza",
+		"model_before": "{{\"phone\":\"123123123\"}}",
+		"model_after":  "{{\"pizza_type\":\"test\", \"phone\":\"123123123\"}}",
+		"validation":   "there is an error: pizza_type test is not present in the menu",
+		"response":     "Pizza type is not a valid pizza"
+	}
+]

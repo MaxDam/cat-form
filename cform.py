@@ -19,8 +19,6 @@ from langchain.prompts.example_selector import SemanticSimilarityExampleSelector
 from langchain.vectorstores import Qdrant
 
 
-   
-
 # Conversational Form State
 class CFormState(Enum):
     INVALID         = 0
